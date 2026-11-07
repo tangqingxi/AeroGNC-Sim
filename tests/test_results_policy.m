@@ -76,8 +76,22 @@ cfg.save.enabled = false;
 aero_sim(scalar_integrator_model(), cfg);
 check_that(aero_results_usage(rootE).files == 0, '内存模式仿真写出了文件');
 
+% --- 持久化模式端到端 -------------------------------------------------
+rootF = make_temp_root();
+cleanupF = onCleanup(@() remove_dir(rootF)); %#ok<NASGU>
+cfg.save.enabled = true;
+cfg.save.path = 'run.mat';
+cfg.results_root = rootF;
+persisted = aero_sim(scalar_integrator_model(), cfg);
+check_that(isfield(persisted, 'saved_path') && isfile(persisted.saved_path), ...
+    '持久化模式未生成结果文件');
+check_that(strncmp(persisted.saved_path, rootF, numel(rootF)), ...
+    '结果文件写到了 Results 根目录之外');
+check_that(strcmp(persisted.results_check.status, 'ok'), ...
+    '持久化检查状态为 "%s"，期望 ok', persisted.results_check.status);
+
 info = struct('passed', true, 'summary', sprintf( ...
-    '默认 10e9/8e9/5000/4000；单次计数、缩放预警与超限拒绝均验证（结果大小 %d B）', sizeA));
+    '默认 10e9/8e9/5000/4000；单次计数、缩放预警、超限拒绝、内存与持久化模式均验证（结果 %d B）', sizeA));
 
 end
 
