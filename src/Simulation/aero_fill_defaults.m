@@ -1,16 +1,16 @@
 function cfg = aero_fill_defaults(cfg, defaults)
-%AERO_FILL_DEFAULTS Fill missing configuration fields from a defaults struct.
+%AERO_FILL_DEFAULTS 用默认值补齐缺失的配置字段
 %
-%   Only absent fields are filled. Nested structs are filled recursively when
-%   both sides are scalar structs; struct arrays (for example cfg.components)
-%   are never merged element-wise.
+% 只填充“不存在”的字段；已有字段（包括空值）保持原样，交由
+% aero_validate_config 判定合法性，避免默认值掩盖用户错误。
+% 标量结构体递归补齐（例如 solver），结构数组（components）不逐元素合并。
 
 if isempty(cfg)
     cfg = defaults;
     return;
 end
 if ~isstruct(cfg) || ~isscalar(cfg)
-    error('aero:config:type', 'configuration must be a scalar struct');
+    error('aero:config:type', '配置必须是标量结构体');
 end
 
 names = fieldnames(defaults);

@@ -1,9 +1,13 @@
 function info = aero_env_info()
-%AERO_ENV_INFO Record the execution environment for reproducibility.
+%AERO_ENV_INFO 记录本次运行的环境信息（用于复现）
 %
-%   info.matlab_version / matlab_release / computer describe MATLAB;
-%   info.git_commit / git_dirty describe the DEV checkout. Git information is
-%   best effort: when git is unavailable the fields are 'unknown'/false.
+% 输出：
+%   matlab_version / matlab_release / computer - MATLAB 与平台
+%   project_root                              - 项目根目录
+%   git_commit / git_dirty                    - DEV 提交与工作区状态（尽力获取）
+%
+% 说明：git 信息用于把结果关联到具体提交；git 不可用时字段为 'unknown'/false，
+% 不阻塞仿真。结果在同一 MATLAB 会话内缓存，避免重复调用外部进程。
 
 persistent cached
 if ~isempty(cached)

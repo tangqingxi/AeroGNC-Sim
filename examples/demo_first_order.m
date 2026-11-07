@@ -1,17 +1,15 @@
 function demo_first_order()
-%DEMO_FIRST_ORDER Minimal end-to-end example of the Simulation-Kernel.
+%DEMO_FIRST_ORDER Simulation-Kernel 最小端到端示例
 %
-%   Run from the repository root:
-%       matlab -batch "run('examples/demo_first_order.m')"
+% 在仓库根目录运行：
+%   matlab -batch "run('examples/demo_first_order.m')"
 %
-%   The model is an analytic first-order plant (a test double, not an
-%   aircraft). A 2 Hz "command" component latches u = 1 at t = 0.5 s; the
-%   kernel integrates piecewise with ode45 and records states, events and
-%   commands.
+% 模型为一阶解析系统（测试替身，不是飞行器）：2 Hz 的 command 组件在
+% t = 0.5 s 锁存 u = 1，内核用分段 ode45 积分并记录状态、事件与命令。
 
 root = fileparts(fileparts(mfilename('fullpath')));
-addpath(fullfile(root, 'src'));
-addpath(fullfile(root, 'models'));
+addpath(root);
+aero_setup();
 
 model = first_order_model(2, 3);
 

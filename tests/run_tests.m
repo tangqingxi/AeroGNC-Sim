@@ -1,16 +1,18 @@
 function run_tests(pattern)
-%RUN_TESTS Run the Simulation-Kernel regression suite.
+%RUN_TESTS 运行 Simulation-Kernel 回归测试集
 %
-%   run_tests            run every test
-%   run_tests('multirate') run tests whose name contains the pattern
+% 用法：
+%   run_tests              运行全部测试
+%   run_tests('multirate') 只运行名称包含该片段的测试
 %
-%   The script exits with an error when any test fails, so that
-%   `matlab -batch "run_tests"` returns a non-zero exit code.
+% 任一测试失败时抛出 aero:tests:failed，使
+% `matlab -batch "run('tests/run_tests.m')"` 返回非零退出码。
+% 被跳过的测试（例如系统不允许创建 Junction）单独计数，不伪装成通过。
 
 here = fileparts(mfilename('fullpath'));
 root = fileparts(here);
-addpath(fullfile(root, 'src'));
-addpath(fullfile(root, 'models'));
+addpath(root);      % aero_setup 位于仓库根目录
+aero_setup();
 addpath(here);
 
 names = { ...
@@ -25,6 +27,7 @@ names = { ...
     'test_solver_tolerance', ...
     'test_reproducibility', ...
     'test_results_policy', ...
+    'test_results_safety', ...
     'test_invalid_input', ...
     'test_adaptive_integration'};
 
@@ -44,6 +47,7 @@ fprintf('MATLAB %s (%s) on %s\n', version, version('-release'), computer);
 fprintf('Project root: %s\n\n', root);
 
 nPass = 0;
+nSkip = 0;
 failures = {};
 tAll = tic;
 for k = 1:numel(names)
@@ -54,8 +58,13 @@ for k = 1:numel(names)
         if ~isstruct(info) || ~isfield(info, 'passed') || ~info.passed
             error('aero:test:result', 'test did not report a passing result');
         end
-        nPass = nPass + 1;
-        fprintf('        PASS  %s  (%.2fs)\n', info.summary, toc(t0));
+        if isfield(info, 'skipped') && info.skipped
+            nSkip = nSkip + 1;
+            fprintf('        SKIP  %s  (%.2fs)\n', info.summary, toc(t0));
+        else
+            nPass = nPass + 1;
+            fprintf('        PASS  %s  (%.2fs)\n', info.summary, toc(t0));
+        end
     catch err
         failures{end + 1} = sprintf('%s: %s', names{k}, err.message); %#ok<AGROW>
         fprintf('        FAIL  %s\n', err.message);
@@ -65,7 +74,11 @@ for k = 1:numel(names)
     end
 end
 
-fprintf('\n%d/%d tests passed in %.2fs\n', nPass, numel(names), toc(tAll));
+fprintf('\n%d/%d tests passed in %.2fs', nPass, numel(names), toc(tAll));
+if nSkip > 0
+    fprintf(' (%d skipped)', nSkip);
+end
+fprintf('\n');
 if ~isempty(failures)
     fprintf('\nFAILURES\n');
     for k = 1:numel(failures)
