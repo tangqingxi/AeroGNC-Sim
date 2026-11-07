@@ -1,0 +1,16 @@
+# Simulation output (see "Results 容量治理" in README)
+results/
+
+# MATLAB editor / build artefacts
+*.asv
+*.m~
+*.autosave
+slprj/
+codegen/
+*.slxc
+*.mlx~
+
+# OS noise
+Thumbs.db
+desktop.ini
+.DS_Store
