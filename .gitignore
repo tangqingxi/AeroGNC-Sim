@@ -1,5 +1,5 @@
-# Simulation output (see "Results 容量治理" in README)
-results/
+# Simulation output (repository root only — do not ignore src/**/Results)
+/results/
 
 # MATLAB editor / build artefacts
 *.asv
