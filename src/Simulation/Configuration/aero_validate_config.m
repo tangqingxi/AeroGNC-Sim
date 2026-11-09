@@ -102,6 +102,38 @@ if ~iscell(comm.topics)
 end
 comm.command_topic = normalize_topic_name(comm, 'command_topic');
 comm.held_command_topic = normalize_topic_name(comm, 'held_command_topic');
+
+logConfig = struct('enabled', false, 'topics', {{}}, 'max_records', 10000);
+if isfield(comm, 'log') && ~isempty(comm.log)
+    if ~isstruct(comm.log) || ~isscalar(comm.log)
+        error('aero:config:communication', 'communication.log 必须是标量结构体');
+    end
+    logConfig = comm.log;
+end
+if ~isfield(logConfig, 'enabled') || isempty(logConfig.enabled)
+    logConfig.enabled = false;
+end
+if ~isscalar(logConfig.enabled) ...
+        || ~(islogical(logConfig.enabled) || isnumeric(logConfig.enabled))
+    error('aero:config:communication', 'communication.log.enabled 必须是逻辑标量');
+end
+logConfig.enabled = logical(logConfig.enabled);
+if ~isfield(logConfig, 'topics')
+    logConfig.topics = {};
+end
+if ~iscell(logConfig.topics)
+    error('aero:config:communication', 'communication.log.topics 必须是 cell 数组');
+end
+if ~isfield(logConfig, 'max_records') || isempty(logConfig.max_records)
+    logConfig.max_records = 10000;
+end
+if ~isnumeric(logConfig.max_records) || ~isscalar(logConfig.max_records) ...
+        || ~isfinite(logConfig.max_records) || logConfig.max_records < 1 ...
+        || logConfig.max_records ~= fix(logConfig.max_records)
+    error('aero:config:communication', 'communication.log.max_records 必须是正整数');
+end
+comm.log = logConfig;
+
 cfg.communication = comm;
 
 % ---- 组件 -------------------------------------------------------------

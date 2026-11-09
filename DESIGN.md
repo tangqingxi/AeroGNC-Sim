@@ -211,7 +211,7 @@ B_acc = J_frd⁻¹ · B_tau
 - 悬停配平（不依赖气动表，检查非对称生效行程上下界）、几何/效能/动力学/执行器/停机状态/
   指令独立性/输出语义/元数据/集成/目录治理测试，共 23 项。
 - Communication-Core：Latest-Value Topic Bus（注册、发布、读取、契约校验、可用/过期/时间倒退处理、
-  真值隔离）并已接入 `aero_sim`（可选，默认关闭）；全项目共 25 项测试。
+  真值隔离）并已接入 `aero_sim`（可选，默认关闭）；结果快照、发布日志与边界校验已补齐；全项目共 27 项测试。
 
 **未实现 / 依赖外部条件**
 
@@ -307,6 +307,8 @@ AeroGNC-Sim/
 | `msg = bus.read(name, now)` | 严格读取：未注册/未发布/尚不可用/过期分别报错 |
 | `[msg, status] = bus.tryRead(name, now)` | 非抛出式读取，`status` 为 `ok`/`unknown_topic`/`missing`/`not_available`/`stale` |
 | `msg = bus.latest(name, 'diagnostic')` | 仅诊断；必须显式传 `'diagnostic'`，正式消费者应使用 read/tryRead |
+| `bus.enableLog(topics, maxRecords)` | 可选的发布日志（默认关闭），只记录显式 Topic 的实际发布；拒绝真值 Topic；总量上限防止无限增长 |
+| `snap = bus.logSnapshot()` / `aero_communication_snapshot(bus)` | 返回普通值快照（日志 / 各 Topic 最后消息），不含 handle |
 | `bus.topicNames()` / `bus.getSpec(name)` / `bus.sequence()` | 注册列表、契约与全局发布序号 |
 
 契约由 `aero_topic_spec(fields, dimensions, units, options)` 构造，声明字段名、尺寸、单位、
@@ -351,13 +353,20 @@ message.source             可选的来源标识
 - 命令：内核在 `bus.command` / `bus.held_command` **发生变化**时分别发布到
   `command_topic` / `held_command_topic`（数值命令打包为 `struct('value', cmd(:))`，
   结构体命令原样发布）。两者 Topic 分离，锁存频率与计算频率可以不同，原有锁存逻辑不变。
-- 启用时 `result.communication` 记录 `enabled/topic_names/publish_count/bus` 句柄，便于验证；
-  关闭时该字段不存在，旧结果结构保持不变。
+- 启用时 `result.communication` 是**普通值快照**（`aero-communication-snapshot/1`，由
+  `aero_communication_snapshot` 生成）：Topic 列表、发布计数、每个 Topic 最后一条消息与日志快照；
+  **不保存 Bus 句柄**，可直接 `save/load`。关闭时该字段不存在，旧结果结构保持不变。
+- 可选日志：`cfg.communication.log = struct('enabled',false,'topics',{{}},'max_records',10000)`；
+  只记录所选 Topic 的**实际发布**（名称/载荷/采样时间/可用时间/全局与 Topic 序号），
+  超过 `max_records` 的发布计入 `dropped` 而不增长；拒绝真值 Topic；开关日志不改变轨迹与时序。
+- 启动校验：命令 Topic 与锁存命令 Topic 必须不同；传感器 Topic 不得重复、不得与命令 Topic 冲突；
+  运行时组件不得删除或替换 `bus.topics`（唯一实例检查）。
 - 内核不解释 Topic 字段名，不为 SHC09 或任何控制算法硬编码契约。
 
 ### 14.6 已知限制
 
-1. 仅 Latest-Value；未来 ECL 等需要逐样本消费的高频数据需另行设计，不在本轮。
-2. 尚未接入 `aero_sim`；接入时必须由 Simulation 持有唯一实例，禁止第二套并行 Bus，
-   且不得改变 `command` / `held_command` 的独立锁存语义。
+1. 仅 Latest-Value；日志只用于分析与离线核查，不是历史消息队列，也不提供回放/逐样本订阅。
+2. 日志容量由 `max_records` 限制；超出部分只计数不保存，长时高频仿真需自行设置容量。
 3. 契约只校验结构、尺寸与有限性，不校验物理合理性（量程、单位换算由模块负责）。
+4. `truth/` 前缀不是权限系统；真实隔离依赖 Simulation 的数据边界与模块纪律。
+5. 仅在 MATLAB R2025b 下验证了快照 `.mat` 保存/加载；不承诺跨 MATLAB 版本兼容。

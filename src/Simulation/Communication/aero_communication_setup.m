@@ -6,6 +6,7 @@ function comm = aero_communication_setup(config)
 %   topics              cell 数组，每项 struct('name', char, 'spec', spec)
 %   command_topic       计算命令 Topic（空表示不发布）
 %   held_command_topic  锁存命令 Topic（空表示不发布）
+%   log                 可选发布日志：enabled/topics/max_records
 %
 % 输出 comm：
 %   enabled, bus（aero_topic_bus 或 []）, topic_names, command_topic, held_command_topic
@@ -49,6 +50,10 @@ if isfield(config, 'held_command_topic') && ~isempty(config.held_command_topic)
     heldTopic = char(config.held_command_topic);
 end
 
+if ~isempty(commandTopic) && ~isempty(heldTopic) && strcmp(commandTopic, heldTopic)
+    error('aero:comm:duplicateCommandTopic', ...
+        'command_topic 与 held_command_topic 不能是同一 Topic："%s"', commandTopic);
+end
 if ~isempty(commandTopic) && ~bus.isRegistered(commandTopic)
     error('aero:comm:unknownCommandTopic', ...
         'command_topic "%s" 不在已注册 Topic 中', commandTopic);
@@ -56,6 +61,25 @@ end
 if ~isempty(heldTopic) && ~bus.isRegistered(heldTopic)
     error('aero:comm:unknownCommandTopic', ...
         'held_command_topic "%s" 不在已注册 Topic 中', heldTopic);
+end
+
+% ---- 可选发布日志（默认关闭） ---------------------------------------
+logConfig = struct('enabled', false, 'topics', {{}}, 'max_records', 10000);
+if isfield(config, 'log') && ~isempty(config.log)
+    if ~isstruct(config.log) || ~isscalar(config.log)
+        error('aero:comm:config', 'communication.log 必须是标量结构体');
+    end
+    logConfig = config.log;
+end
+if isfield(logConfig, 'enabled') && logical(logConfig.enabled)
+    if ~isfield(logConfig, 'topics')
+        error('aero:comm:config', '日志启用时必须给出 topics');
+    end
+    maxRecords = 10000;
+    if isfield(logConfig, 'max_records') && ~isempty(logConfig.max_records)
+        maxRecords = logConfig.max_records;
+    end
+    bus.enableLog(logConfig.topics, maxRecords);
 end
 
 comm.enabled = true;

@@ -35,6 +35,11 @@ properties (Access = private)
     registeredNames     % cellstr，按注册顺序
     globalSequence      % uint64，全局发布顺序
     topicVersions       % containers.Map: name -> uint64
+    logEnabled          % 是否记录发布日志（默认 false）
+    logTopics           % 需要记录的 Topic 名称 cellstr
+    logMaxRecords       % 日志总容量（正标量）
+    logRecords          % 1×N cell，每条为一次实际发布
+    logDropped          % uint64，因容量上限未记录的条数
 end
 
 methods
@@ -44,6 +49,48 @@ methods
         obj.topicVersions = containers.Map('KeyType', 'char', 'ValueType', 'any');
         obj.registeredNames = cell(1, 0);
         obj.globalSequence = uint64(0);
+        obj.logEnabled = false;
+        obj.logTopics = cell(1, 0);
+        obj.logMaxRecords = 10000;
+        obj.logRecords = cell(1, 0);
+        obj.logDropped = uint64(0);
+    end
+
+    function enableLog(obj, topics, maxRecords)
+        % 开启轻量发布日志（默认关闭）。只记录显式选择的 Topic，且拒绝真值 Topic。
+        if nargin < 3 || isempty(maxRecords)
+            maxRecords = 10000;
+        end
+        names = normalize_topic_list(topics);
+        if isempty(names)
+            error('aero:bus:logConfig', '日志至少需要一个 Topic');
+        end
+        for k = 1:numel(names)
+            spec = obj.requireRegistered(names{k});
+            if spec.allow_ground_truth
+                error('aero:bus:logGroundTruth', ...
+                    'Topic "%s" 承载真值，禁止进入发布日志', names{k});
+            end
+        end
+        if ~isnumeric(maxRecords) || ~isscalar(maxRecords) || ~isfinite(maxRecords) ...
+                || maxRecords < 1 || maxRecords ~= fix(maxRecords)
+            error('aero:bus:logConfig', 'maxRecords 必须是正整数');
+        end
+        obj.logEnabled = true;
+        obj.logTopics = names(:).';
+        obj.logMaxRecords = double(maxRecords);
+        obj.logRecords = cell(1, 0);
+        obj.logDropped = uint64(0);
+    end
+
+    function snap = logSnapshot(obj)
+        % 返回不可变的日志快照（普通值结构，可安全写入结果或 .mat）
+        snap = struct();
+        snap.enabled = obj.logEnabled;
+        snap.topics = obj.logTopics;
+        snap.max_records = obj.logMaxRecords;
+        snap.records = obj.logRecords;
+        snap.dropped = obj.logDropped;
     end
 
     function register(obj, name, spec)
@@ -126,6 +173,7 @@ methods
 
         obj.messages(name) = message;
         obj.topicVersions(name) = version;
+        obj.recordLog(message);
     end
 
     function msg = read(obj, name, now)
@@ -212,6 +260,24 @@ methods
 end
 
 methods (Access = private)
+    function recordLog(obj, message)
+        % 只记录显式选择的 Topic 的“实际发布”，不做定时采样。
+        if ~obj.logEnabled || ~any(strcmp(obj.logTopics, message.name))
+            return;
+        end
+        if numel(obj.logRecords) >= obj.logMaxRecords
+            obj.logDropped = obj.logDropped + uint64(1);
+            return;
+        end
+        obj.logRecords{end + 1} = struct( ...
+            'name', message.name, ...
+            'data', message.data, ...
+            'sample_time_s', message.sample_time_s, ...
+            'available_time_s', message.available_time_s, ...
+            'sequence', message.sequence, ...
+            'topic_sequence', message.topic_sequence);
+    end
+
     function name = normalizeName(~, name)
         if isstring(name) && isscalar(name)
             name = char(name);
@@ -273,6 +339,23 @@ methods (Access = private)
         end
     end
 end
+end
+
+% ===========================================================================
+function names = normalize_topic_list(topics)
+if ischar(topics)
+    names = {topics};
+elseif isstring(topics)
+    names = cellstr(topics(:).');
+elseif iscell(topics)
+    if ~all(cellfun(@(v) ischar(v) || (isstring(v) && isscalar(v)), topics))
+        error('aero:bus:logConfig', '日志 Topic 必须是字符/字符串');
+    end
+    names = cellfun(@char, topics(:).', 'UniformOutput', false);
+else
+    error('aero:bus:logConfig', '日志 Topic 必须是字符/字符串或 cell 数组');
+end
+names = names(~cellfun(@isempty, names));
 end
 
 % ===========================================================================

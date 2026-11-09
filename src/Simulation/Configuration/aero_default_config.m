@@ -28,7 +28,8 @@ cfg.seed = 0;
 cfg.time_tolerance = [];
 cfg.results_root = '';
 cfg.communication = struct('enabled', false, 'topics', {{}}, ...
-    'command_topic', '', 'held_command_topic', '');
+    'command_topic', '', 'held_command_topic', '', ...
+    'log', struct('enabled', false, 'topics', {{}}, 'max_records', 10000));
 cfg.save = struct('enabled', false, 'path', '', 'estimated_bytes', 0);
 cfg.verbose = false;
 

@@ -73,12 +73,25 @@ bus.topics = comm.bus;
 lastCommand = bus.command;
 lastHeld = bus.held_command;
 if comm.enabled
+    sensorTopics = cell(1, 0);
     for cIdx = 1:numel(cfg.components)
         topicName = cfg.components(cIdx).topic;
-        if ~isempty(topicName) && ~comm.bus.isRegistered(topicName)
+        if isempty(topicName)
+            continue;
+        end
+        if ~comm.bus.isRegistered(topicName)
             error('aero:comm:unknownMeasurementTopic', ...
                 '传感器 "%s" 的 topic "%s" 未注册', cfg.components(cIdx).name, topicName);
         end
+        if any(strcmp(sensorTopics, topicName))
+            error('aero:comm:topicConflict', ...
+                '多个传感器声明了同一 Topic "%s"', topicName);
+        end
+        if strcmp(topicName, comm.command_topic) || strcmp(topicName, comm.held_command_topic)
+            error('aero:comm:topicConflict', ...
+                '传感器 Topic "%s" 与命令 Topic 冲突', topicName);
+        end
+        sensorTopics{end + 1} = topicName; %#ok<AGROW>
     end
     t0 = cfg.tspan(1);
     if ~isempty(comm.command_topic)
@@ -185,6 +198,14 @@ for g = 1:nGroups
                 end
                 latchCount = latchCount + 1;
             end
+            % 唯一通信实例检查：组件不得删除或替换 bus.topics
+            if comm.enabled
+                if ~isfield(bus, 'topics') || ~isa(bus.topics, 'aero_topic_bus') ...
+                        || bus.topics ~= comm.bus
+                    error('aero:comm:busReplaced', ...
+                        '组件 "%s" 在 t=%.17g 删除或替换了唯一通信总线', component.name, t);
+                end
+            end
             % 组件更新后立即检查命令值：任意字段名均可，但必须是有限数值结构
             aero_validate_command(bus.command, 'aero:kernel:command', ...
                 sprintf('组件 "%s" 在 t=%.17g 写入的 bus.command', component.name, t));
@@ -258,13 +279,9 @@ result.stats = struct( ...
     'total_internal_points', totalInternalPoints, ...
     'wall_time_s', wallTime);
 
-% 通信启用时记录总线摘要与句柄，便于验证与诊断；关闭时结果结构保持不变。
+% 通信启用时把总线转为普通值快照（不含 handle），便于持久化与核查。
 if comm.enabled
-    result.communication = struct( ...
-        'enabled', true, ...
-        'topic_names', {comm.topic_names}, ...
-        'publish_count', comm.bus.sequence(), ...
-        'bus', comm.bus);
+    result.communication = aero_communication_snapshot(comm.bus);
 end
 
 % ---- 6. 按配置持久化（默认只在内存中返回） ----------------------------
