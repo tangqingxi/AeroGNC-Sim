@@ -1,0 +1,206 @@
+# AeroGNC-Sim 详细设计（DESIGN）
+
+> 本文是长期技术设计说明：模块边界、接口约定、设备参数治理与扩展规则。
+> 顶层架构基线以 [`ARCHITECTURE.md`](ARCHITECTURE.md) 为准；本文不重复其冻结决策，
+> 只把已确认的设计思想展开为可执行约定。协作与代码规范见 [`AGENTS.md`](AGENTS.md)。
+
+## 1. 项目愿景与使用方式
+
+AeroGNC-Sim 是模块化 MATLAB GNC 科研仿真平台。研究者通过**选择与组合**模块构建实验：
+
+```matlab
+aero_setup();
+
+cfg = aero_default_config();
+cfg.tspan = [0 10];
+cfg.x0 = 初始状态;
+cfg.initial_command = 初始指令;      % 数值，或字段均为数值的结构体
+
+model = shc09_model(options);        % Aircraft 型号（含 Components 装配）
+result = aero_sim(model, cfg);       % 统一仿真内核
+```
+
+目标：更换机型、设备型号、制导/导航/控制算法时，原则上不修改 `Simulation` 核心。
+SHC09 是第一个完整机型实例，不是平台的唯一对象。
+
+## 2. 模块功能边界
+
+| 模块 | 负责 | 不负责 |
+|---|---|---|
+| `src/Simulation/` | 虚拟时钟、事件调度、分段 `ode45`、指令锁存、测量发布、日志、结果持久化 | 任何机型气动、设备型号、控制算法 |
+| `src/Aircraft/<TYPE>/` | 整机装配、质量惯量、几何、气动、完整动力学、状态定义、标准输出 | 通用设备动态、控制算法、场景 |
+| `src/Components/` | 可复用设备型号参数与通用设备动力学 | 安装位置、通道编号、机型专属效能、控制器参数 |
+| `src/GNC/`（未实现） | Guidance / Navigation / Control 与可替换分配 | 物理对象、场景 |
+| `src/Scenarios/`（未实现） | 任务、环境、初始条件、实验配置 | 物理模型、控制算法 |
+
+## 3. Aircraft 与 Components 的组合关系
+
+```text
+Aircraft 装配（shc09_model）
+   ├── 选择设备型号：ServoDevices.KST_X08H / MotorDevices.MAD_M6C06_320KV_V2
+   ├── 装配参数：质量、惯量、舵面几何、力臂、通道顺序、PWM/锁存频率
+   ├── 气动模型：涵道、机翼、六舵面、固定片、陀螺
+   ├── 通用设备动力学：aero_servo_dynamics / aero_motor_dynamics
+   └── 输出：model.dynamics / model.project / model.outputs
+```
+
+组合原则：
+
+- 设备型号只提供设备自身参数；Aircraft 决定用哪个型号、装在哪里、编号与方向如何。
+- 通用动力学只接收参数，不读取文件、不判断品牌、不引用 SHC09。
+- 新增机型时复用同一套 Components；新增设备型号时只加参数文件夹与装配选择。
+
+## 4. 设备型号参数库
+
+目录使用 MATLAB 原生包（`+` 文件夹）组织，避免注册器与全局搜索：
+
+```text
+src/Components/Actuators/Servo/+ServoDevices/+KST_X08H/parameters.m
+src/Components/Actuators/Motor/+MotorDevices/+MAD_M6C06_320KV_V2/parameters.m
+```
+
+调用：`ServoDevices.KST_X08H.parameters()`。
+
+每个型号文件记录：名称、类别、动力学 `model_type`、固有规格与单位、可用动态参数、
+来源与可信等级、必要的物理限制。**不允许**记录 SHC09 安装位置、CS1–CS6 编号、
+PWM 中值、单台舵机方向或控制器增益。
+
+## 5. 设备参数模板（复制即用）
+
+```matlab
+function p = parameters()
+%PARAMETERS <厂商> <型号> 设备参数
+p = struct();
+p.device_name = '<厂商> <型号>';
+p.device_class = 'servo';          % 'servo' | 'motor'
+p.model_type = 'first_order';
+
+p.tau_s = 0.03;                    % 一阶时间常数，s
+p.rate_limit_rad_s = deg2rad(600); % 舵机角速率上限，rad/s（电机用 accel_limit_rad_s2）
+p.range_rad = deg2rad([-40, 40]);  % 机械行程，rad（电机用 omega_range_rad_s）
+
+p.provenance = struct( ...
+    'tau_s', '仿真假设 / 实测 / 厂家规格', ...
+    'rate_limit_rad_s', '仿真假设 / 实测 / 厂家规格', ...
+    'range_rad', '来源说明');
+p.notes = '替换为实测值无需修改通用动力学。';
+end
+```
+
+## 6. 通用执行器动力学与 mode 扩展
+
+一阶模型（本轮唯一实现）：
+
+```text
+舵机：δ̇ = clamp((δ_cmd − δ)/τ, ±ω_max)，限位处导数置零
+电机：Ω̇ = clamp((Ω_cmd − Ω)/τ, ±a_max)，目标先按转速范围限幅
+```
+
+`model_type` 只声明“用哪种动态描述”，当前仅 `'first_order'`。
+后续 `second_order`、`identified`、`nonlinear` 在真实需要时再实现，不预建空文件。
+不同 mode 可以有不同状态维数，由图型装配决定状态个数。
+
+设备型号与动力学 mode 相互独立：同一舵机可用不同精度模型，同一模型可服务不同设备。
+
+## 7. 六维舵面与独立电机指令
+
+**七维统一控制向量已废弃。** 指令由两条独立信号组成：
+
+```matlab
+command.servos = zeros(6,1);   % CS1..CS6 目标偏角，rad
+command.motor  = 0;            % 旋翼目标转速，rad/s
+```
+
+- Simulation 只做通用校验、锁存与传递，**不识别** `servos` / `motor` 字段名，也不预设字段数量。
+- 结构体命令要求：单层结构，所有字段为非空有限实数；数值命令接口保持兼容。
+- 舵面与电机可以有不同的更新周期与锁存频率（SHC09 装配：舵面 200 Hz、电机 50 Hz）。
+- 更新一条指令不覆盖另一条：组件只写自己的字段，锁存组件只复制自己的字段。
+- 指令解耦不代表物理解耦：六舵面效能依赖出口流速 `Ve`，`Ve` 又由旋翼推力决定，
+  这一耦合只存在于 `shc09_aero_force` 的物理计算中。
+
+## 8. Simulation 与 Aircraft 接口
+
+```matlab
+model.name        = 'SHC09';
+model.x0          = 20×1 初始状态;
+model.dynamics    = @(t, x, command, env) dx;
+model.project     = @(x) xp;        % 可选：四元数归一化/执行器限幅
+model.outputs     = @(t, x, env) truth;
+model.state_layout, model.parameters, model.aero, model.initial_command
+```
+
+- `dynamics` 必须无副作用：不修改输入、不读写文件、不消耗随机数、不更新控制器。
+- `project` 只做数值约束（四元数范数、行程、转速），由内核在每个积分段后调用。
+- `env` 可选字段：`wind_ned_m_s`、`force_ned_n`、`torque_body_nm`。
+- 内核不解释状态含义；`state_layout` 是 SHC09 自己的定义。
+
+## 9. SHC09 已冻结的几何与物理方向
+
+- 机体系 FRD：+X 机头、+Y 右侧、+Z 涵道轴向下，原点在重心；惯性系 NED。
+- 质量 `m = 2.1 kg`；惯量 `J_frd = diag([0.0438, 0.0436, 0.005006]) kg·m²`
+  （Gazebo/PX4 FRD 参考值，未实机辨识）。
+- 六舵面方位角 0/60/120/180/240/300°，`r_i = [l2 cosφ; l2 sinφ; l1]`，
+  正向旋转轴 `a_i = [cosφ; sinφ; 0]`，实机接线编号与 CS1–CS6 一致。
+- `l1 = 0.267 m`（轴向力臂）、`l2 = 0.066 m`（偏航力臂）。
+- 力矩效能（无量纲）：
+
+```text
+B_M = [-1, -1/2, 1/2, 1, 1/2, -1/2;
+        0, -√3/2, -√3/2, 0, √3/2, √3/2;
+        1,  1,    1,   1, 1,    1]
+B_tau = d_cs · Ve² · diag([l1, l1, l2]) · B_M
+B_acc = J_frd⁻¹ · B_tau
+```
+
+  三者不得混用。`B_M` 可由几何导出：第 i 列 = `diag([l1,l1,l2])⁻¹ (r_i × f_i)`，
+  其中正偏角气动合力方向 `f_i = [-sinφ_i; cosφ_i; 0]`。
+- 旋翼正转：绕 +Z 右手正向，推力沿 −Z，空气动力反扭矩沿 −Z；固定片反扭矩反向补偿。
+- 舵机：KST X08H，8 V，机械行程约 ±40°，实机 PWM 更新率 200 Hz。
+- 舵面真实偏角、旋翼真实转速是连续状态，由通用动力学推进；目标指令是锁存输入。
+
+## 10. 参数归属、单位与可信等级
+
+| 参数 | 单位 | 归属 | 可信等级 |
+|---|---|---|---|
+| 质量、惯量 | kg、kg·m² | Aircraft 装配 | 参考值，未辨识 |
+| 力臂、方位角、限位 | m、rad | Aircraft 装配 | 实机定义 |
+| `B_M` | — | Aircraft 几何 | 实机接线与几何 |
+| 涵道/机翼系数 | SI | Aircraft 气动数据 | **外部数据，许可待确认** |
+| 舵机 τ、速率 | s、rad/s | 设备型号 | 名义参数 |
+| 电机 τ、转速范围 | s、rad/s | 设备型号 | 名义参数 |
+| PWM/锁存频率 | Hz | Aircraft 装配 | 实机配置 |
+| 控制器参数 | — | Control（未实现） | — |
+
+实验覆盖通过 `shc09_parameters(overrides)` 或 `shc09_model(struct('overrides', ...))`，
+覆盖内容记录在 `p.overrides` 并随结果保存。
+
+## 11. 扩展、目录治理与禁止事项
+
+- 新增机型：`src/Aircraft/<TYPE>/`，实现 `model` 装配与动力学，复用 Components。
+- 新增设备：只增加 `+ServoDevices/+<MODEL>/parameters.m` 或 `+MotorDevices/+<MODEL>/parameters.m`，
+  并在装配中选择；一般不改通用动力学。
+- 新增算法：在 `src/GNC/{Guidance,Navigation,Control}` 下按需创建，不在本轮预建。
+- `aero_setup.m` 只显式登记已实现模块目录，禁止递归 `addpath`。
+- 禁止平行目录（`models/`、`core/`、`physics/`、第二套 `simulation/`）；
+  禁止把设备型号、机型动力学、控制器写在同一文件；禁止为兼容历史保留两套同功能实现。
+- 气动原始表不得在许可确认前进入仓库；只能通过外部数据接口加载。
+
+## 12. 已实现与未实现边界
+
+**已实现**
+
+- Simulation 内核（分段 `ode45`、多速率事件、锁存、测量延迟、结果与容量策略）。
+- 通用结构体命令容器（`command` 可为数值或有限数值字段结构体）。
+- Servo/Motor 通用一阶动力学与两个设备型号参数。
+- SHC09 20 状态非线性六自由度模型：刚体、涵道、机翼、六舵面、陀螺、反扭矩、风扰。
+- 悬停配平（不依赖气动表）、几何/效能/动力学/执行器/指令独立性/集成测试。
+
+**未实现 / 依赖外部条件**
+
+- SHC09 真实气动系数表：再分发许可未确认，真实表不入库；物理气动验证依赖用户提供数据文件。
+- Guidance、Navigation、Control、控制分配、场景库、传感器模型。
+- 二阶/辨识/非线性执行器 mode。
+- 实机参数辨识（惯量、舵机 τ/速率、电机 τ/转速范围仍为参考值或名义值）。
+
+**结论边界**：本轮验证的是“方程实现、坐标与符号、数值积分、执行器动态与接口”，
+不是“实机参数精度”。不得把与参考模型一致表述为实机精度认证。

@@ -23,7 +23,7 @@
 
 ## 3. 开工顺序
 
-1. 读 `ARCHITECTURE.md` 第 2、8、9 节。
+1. 读 `ARCHITECTURE.md` 第 2、8、9 节与 `DESIGN.md`（模块边界、设备参数、接口约定）。
 2. `git status --short --branch` 与 `git log -5 --oneline`：确认工作区状态；有未提交改动时保留，不 `reset` / `clean` / `checkout` 覆盖。
 3. 读 AUDIT 最新阶段报告与 `HANDOFF.md`，核对记录中的 DEV SHA 是否存在、是否等于或祖先于当前 HEAD；不符即视为未验证。
 4. 在回复中先声明本轮所属**语义阶段名**（如 `Simulation-Kernel`），再动手。
@@ -47,15 +47,19 @@
 |---|---|
 | `src/Simulation/` | 仿真内核：配置、调度、积分、锁存、事件与结果组装 |
 | `src/Simulation/Results/` | 结果持久化、容量策略、路径隔离 |
-| `src/Aircraft/`、`src/Components/`、`src/GNC/`、`src/Scenarios/` | **尚未实现**；实现时按 `ARCHITECTURE.md` 职责建目录，并登记到 `aero_setup.m` |
+| `src/Aircraft/SHC09/` | 首个机型：装配、参数、气动、动力学、状态与输出 |
+| `src/Components/Actuators/Servo/`、`.../Motor/` | 通用执行器动力学与设备型号参数（MATLAB 包） |
+| `src/GNC/`、`src/Scenarios/`、`src/Sensors/` | **尚未实现**；不预建空目录，实现时再建并登记 `aero_setup.m` |
 | `tests/` | 回归测试与测试入口 `run_tests.m` |
-| `tests/fixtures/` | 解析测试模型等测试替身（不是正式飞行器模型） |
+| `tests/fixtures/` | 解析测试模型与明确标注的测试替身（不是正式飞行器或真实气动数据） |
 | `examples/` | 可直接运行的最小示例 |
 | `results/` | 仿真输出，已 gitignore，受 10 GB 容量策略约束 |
 
 - 不创建空目录，不用 `.gitkeep` 维持目录；模块真正开始实现时再建目录。
 - 新增一级目录必须有明确职责，并同步更新 `README.md` 与 `aero_setup.m`。
 - MATLAB 路径由根目录 `aero_setup.m` **显式**登记，禁止对整个仓库递归 `addpath`。
+- 新增机型/设备后，平台仍须保持多机型、多设备通用：`Simulation` 不得识别机型或设备字段名，
+  通用执行器动力学不得出现品牌判断，设备型号参数不得包含机型装配信息。
 
 ### 5.2 可读性
 
