@@ -46,6 +46,9 @@ m.geometry = struct( ...
     'control_surface_angle_rad', p.control_surface_angle_rad);
 m.duct_coefficients = p.duct;
 m.damping = struct('k_my0', p.damping_k_my0, 'k_myv', p.damping_k_myv);
+m.servo_torque_coefficient = p.servo_torque_coefficient;
+m.fixed_vane_coefficient = p.fixed_vane_coefficient;
+m.aero_domain_policy = p.aero_domain_policy;
 
 m.servo_device = p.servo_device;
 m.motor_device = p.motor_device;
