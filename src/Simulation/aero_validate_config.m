@@ -22,10 +22,12 @@ if ~isnumeric(cfg.x0) || isempty(cfg.x0) || ~isreal(cfg.x0) || any(~isfinite(cfg
 end
 cfg.x0 = cfg.x0(:);
 
-% ---- 初始命令 ---------------------------------------------------------
-if ~isnumeric(cfg.initial_command) || ~isreal(cfg.initial_command) ...
-        || any(~isfinite(cfg.initial_command(:)))
-    error('aero:config:command', 'initial_command 必须是有限实数');
+% ---- 初始命令（数值向量，或字段均为有限实数的结构体） -----------------
+% 结构体命令用于同时承载互不耦合的多路指令（例如舵面数组与电机转速）。
+% 内核只做通用校验与锁存，不解释字段含义，也不预设字段名。
+if ~is_valid_command(cfg.initial_command)
+    error('aero:config:command', ...
+        'initial_command 必须是有限实数向量，或所有字段均为有限实数的结构体');
 end
 
 % ---- 求解器 -----------------------------------------------------------
@@ -198,6 +200,26 @@ for i = 1:n
     components(i).step = step;
     components(i).sample = sample;
 end
+end
+
+% ===========================================================================
+function tf = is_valid_command(value)
+% 数值命令：非空有限实数；结构体命令：单层结构，所有字段为非空有限实数
+if isnumeric(value)
+    tf = ~isempty(value) && isreal(value) && all(isfinite(value(:)));
+    return;
+end
+if isstruct(value) && isscalar(value)
+    names = fieldnames(value);
+    tf = ~isempty(names);
+    for k = 1:numel(names)
+        field = value.(names{k});
+        tf = tf && isnumeric(field) && isreal(field) && ~isempty(field) ...
+            && all(isfinite(field(:)));
+    end
+    return;
+end
+tf = false;
 end
 
 % ===========================================================================

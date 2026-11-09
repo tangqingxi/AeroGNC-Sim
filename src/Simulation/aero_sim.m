@@ -63,6 +63,9 @@ bus.held_command = cfg.initial_command;  % 真正进入动力学的锁存值
 bus.truth = [];                          % 恒为空：周期组件不得读取真值
 
 x = cfg.x0;
+if isfield(model, 'project') && ~isempty(model.project)
+    x = model.project(x);
+end
 t = cfg.tspan(1);
 segments = cell(max(nGroups - 1, 0), 1);
 totalInternalPoints = 0;
@@ -77,6 +80,10 @@ for g = 1:nGroups
     if g > 1
         [x, integratorInfo] = aero_integrate(model, t, boundary, x, ...
             bus.held_command, cfg.environment, cfg.solver);
+        % 机型可声明状态投影（例如四元数归一化）；内核不解释其物理含义
+        if isfield(model, 'project') && ~isempty(model.project)
+            x = model.project(x);
+        end
         segments{g - 1} = struct( ...
             't0', t, ...
             't1', boundary, ...
