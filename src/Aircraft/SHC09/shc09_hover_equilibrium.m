@@ -31,11 +31,11 @@ M_sta = Dir * p.fixed_vane_coefficient * Ve^2;
 denominator = 6 * p.servo_torque_coefficient * Ve^2 * p.l2_m;
 delta = -(M_fan + M_sta) / denominator;
 
-if abs(delta) > p.servo_effective_range_rad(2)
+range = p.servo_effective_range_rad;
+if delta < range(1) || delta > range(2)
     error('shc09:trim:deflection', ...
-        '配平舵角 %.3f° 超过生效行程 [%.1f°, %.1f°]；请检查旋翼反扭矩与舵面参数，不得强行改参数', ...
-        rad2deg(delta), rad2deg(p.servo_effective_range_rad(1)), ...
-        rad2deg(p.servo_effective_range_rad(2)));
+        '配平舵角 %.3f° 超出生效行程 [%.2f°, %.2f°]；请检查旋翼反扭矩与舵面参数，不得强行改参数', ...
+        rad2deg(delta), rad2deg(range(1)), rad2deg(range(2)));
 end
 
 s = shc09_state_layout();

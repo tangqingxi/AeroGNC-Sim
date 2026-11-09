@@ -28,6 +28,7 @@ p.frame = 'FRD';
 
 % ---- 质量、惯量、环境 ------------------------------------------------
 p.mass_kg = 2.1;
+p.mass_provenance = '实机确认（任务规格：实机质量 2.1 kg）';
 p.inertia_frd_kg_m2 = diag([0.0438, 0.0436, 0.005006]);
 p.inertia_provenance = 'Gazebo/PX4 FRD 参考惯量；未实机辨识';
 p.gravity_m_s2 = 9.788;
@@ -66,8 +67,8 @@ p.servo_device = ServoDevices.KST_X08H.parameters();
 p.motor_device = MotorDevices.MAD_M6C06_320KV_V2.parameters();
 
 % 行程归属：设备文件只声明设备能力（KST 型号文件不声明行程），
-% ±40° 是 SHC09 六舵面装配限制；最终生效行程在文件末尾统一计算。
-p.servo_deflection_limit_rad = deg2rad(40);
+% ±40° 是 SHC09 六舵面装配限制，允许非对称上下界；生效行程在文件末尾计算。
+p.servo_deflection_limit_rad = deg2rad([-40, 40]);
 
 p.servo_pwm_rate_hz = 200;       % 实机舵机输出更新率（装配配置）
 p.servo_latch_rate_hz = 200;     % 舵面指令锁存频率（装配配置）
@@ -97,16 +98,28 @@ else
 end
 
 % ---- 生效舵面行程（覆盖之后计算，保证唯一权威） ----------------------
-% 生效行程 = 设备能力 ∩ 装配限制；结果只存在 servo_effective_range_rad，
-% 并作为唯一 range_rad 传给通用舵机动力学，避免重复参数源。
+% 生效行程 = 设备能力 ∩ 装配限制；装配限制可为非对称 [lower upper]，
+% 标量覆盖视为 ±|limit|。结果只存在 servo_effective_range_rad，并作为
+% 唯一 range_rad 传给通用舵机动力学，避免重复参数源。
+limits = p.servo_deflection_limit_rad;
+if isscalar(limits)
+    limits = [-abs(limits), abs(limits)];
+end
+if numel(limits) ~= 2 || any(~isfinite(limits)) || limits(1) >= limits(2)
+    error('shc09:parameters:servoLimit', ...
+        'servo_deflection_limit_rad 必须是 [lower upper] 且 lower < upper');
+end
+p.servo_deflection_limit_rad = limits(:).';
+
 capability = p.servo_device.range_rad;
 p.servo_effective_range_rad = [ ...
-    max(capability(1), -p.servo_deflection_limit_rad), ...
-    min(capability(2), p.servo_deflection_limit_rad)];
+    max(capability(1), p.servo_deflection_limit_rad(1)), ...
+    min(capability(2), p.servo_deflection_limit_rad(2))];
 if p.servo_effective_range_rad(1) > p.servo_effective_range_rad(2)
     error('shc09:parameters:servoRange', ...
-        '设备能力 [%g, %g] 与装配限制 ±%g 无交集', ...
-        capability(1), capability(2), p.servo_deflection_limit_rad);
+        '设备能力 [%g, %g] 与装配限制 [%g, %g] 无交集', ...
+        capability(1), capability(2), p.servo_deflection_limit_rad(1), ...
+        p.servo_deflection_limit_rad(2));
 end
 p.servo_dynamics = p.servo_device;
 p.servo_dynamics.range_rad = p.servo_effective_range_rad;

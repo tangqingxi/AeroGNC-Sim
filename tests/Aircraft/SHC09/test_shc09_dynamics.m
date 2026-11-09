@@ -62,6 +62,19 @@ check_that(norm(dx(s.servo)) < 1e-12 && abs(dx(s.motor)) < 1e-12, ...
     '配平状态下执行器导数不为零');
 check_that(abs(trim.delta_deg - 7.31) < 0.01, '配平舵角 %.4f° 与参考约 7.31° 不符', trim.delta_deg);
 
+% ---- 非对称装配行程：必须同时检查上下界 ----------------------------
+asymHigh = shc09_parameters(struct('servo_deflection_limit_rad', deg2rad([-20, 5])));
+check_error(@() shc09_hover_equilibrium(asymHigh), 'shc09:trim:deflection', ...
+    '配平角超过非对称上界');
+asymLow = shc09_parameters(struct('servo_deflection_limit_rad', deg2rad([9, 20])));
+check_error(@() shc09_hover_equilibrium(asymLow), 'shc09:trim:deflection', ...
+    '配平角低于非对称下界');
+asymOk = shc09_parameters(struct('servo_deflection_limit_rad', deg2rad([-20, 20])));
+trimOk = shc09_hover_equilibrium(asymOk);
+check_that(trimOk.delta_rad >= asymOk.servo_effective_range_rad(1) && ...
+    trimOk.delta_rad <= asymOk.servo_effective_range_rad(2), ...
+    '非对称行程内的配平角未被接受');
+
 % ---- 四元数运动学与范数投影 ----------------------------------------
 qdot = shc09_quat_kinematics([1; 0; 0; 0], [0; 0; 1]);
 check_that(max(abs(qdot - [0; 0; 0; 0.5])) < 1e-15, '四元数运动学符号错误');
@@ -72,7 +85,8 @@ xq(s.servo) = 10;
 xq(s.motor) = 5000;
 xp = shc09_project(xq, p);
 check_that(abs(norm(xp(s.quaternion)) - 1) < 1e-12, '状态投影未归一化四元数');
-check_that(all(abs(xp(s.servo)) <= p.servo_deflection_limit_rad + 1e-15), '状态投影未限制舵角');
+check_that(all(abs(xp(s.servo)) <= p.servo_effective_range_rad(2) + 1e-15), ...
+    '状态投影未限制舵角');
 check_that(xp(s.motor) <= p.motor_device.omega_range_rad_s(2), '状态投影未限制转速');
 
 % ---- 气动表越界必须显式处理 ----------------------------------------
@@ -85,6 +99,6 @@ pClip.aero_domain_policy = 'clip';
 check_that(all(isfinite(Mclip)), 'clip 策略下结果应为有限值');
 
 info = struct('passed', true, 'summary', sprintf( ...
-    '自由落体/推力与反扭矩方向/陀螺/Jacobian/配平(δ=%.3f°)/四元数/越界均通过', trim.delta_deg));
+    '自由落体/推力与反扭矩方向/陀螺/Jacobian/配平(δ=%.3f°)/非对称行程/四元数/越界均通过', trim.delta_deg));
 
 end

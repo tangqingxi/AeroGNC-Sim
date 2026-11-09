@@ -14,7 +14,10 @@ function aero = shc09_aero_data(source)
 %   wl, wd, wm       机翼样条（pp 形式）
 %   duct_domain_rad  涵道迎角有效域
 %   wing_domain_rad  机翼迎角有效域
-%   is_physical      是否为可用于物理验证的真实数据
+%   is_physical      已废弃；改用 trust + physical_validation_allowed
+%   trust            外部数据默认 'unverified'，调用方显式声明 'verified'
+%                    （仅表示允许用于物理验证，来源仍需另行核对）；
+%                    fixture 固定为 'synthetic'，永不可用于物理验证
 %   source_type/source_file
 %
 % 气动原始表的再分发许可尚未确认，因此真实表不进入本仓库，只能由用户
@@ -30,6 +33,7 @@ end
 switch lower(char(source.type))
     case 'external'
         aero = load_external(source);
+        aero = apply_trust(aero, source, 'unverified');
     case 'fixture'
         if ~isfield(source, 'tables') || isempty(source.tables)
             error('shc09:aero:source', 'fixture 模式必须提供 source.tables');
@@ -37,7 +41,9 @@ switch lower(char(source.type))
         aero = source.tables;
         aero.source_type = 'fixture';
         aero.source_file = '';
-        aero.is_physical = false;
+        % 合成系数永远不是物理数据，且不接受调用方改写可信状态
+        aero.trust = 'synthetic';
+        aero.physical_validation_allowed = false;
     otherwise
         error('shc09:aero:source', '未知的 aero source.type：%s', char(source.type));
 end
@@ -77,7 +83,6 @@ elseif isfield(data, 'aero')
     aero = data.aero;
     aero.source_type = 'external';
     aero.source_file = file;
-    aero.is_physical = true;
     return;
 else
     error('shc09:aero:dataFormat', ...
@@ -95,7 +100,22 @@ aero.duct_domain_rad = [duct(1, 1), duct(end, 1)];
 aero.wing_domain_rad = [wing(1, 1), wing(end, 1)];
 aero.source_type = 'external';
 aero.source_file = file;
-aero.is_physical = true;
+end
+
+% ===========================================================================
+function aero = apply_trust(aero, source, defaultTrust)
+% 外部文件存在 ≠ 物理可信。默认标记为 'unverified'，只有调用方显式声明
+% trust='verified' 才允许用于物理验证；来源与哈希由 metadata 单独记录。
+trust = defaultTrust;
+if isfield(source, 'trust') && ~isempty(source.trust)
+    trust = lower(char(source.trust));
+end
+if ~any(strcmp(trust, {'unverified', 'verified'}))
+    error('shc09:aero:trust', ...
+        'aero source.trust 只能是 unverified 或 verified，收到 "%s"', trust);
+end
+aero.trust = trust;
+aero.physical_validation_allowed = strcmp(trust, 'verified');
 end
 
 function pp = make_spline(table, name)
