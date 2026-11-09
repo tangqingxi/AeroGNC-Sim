@@ -11,7 +11,11 @@ root = fileparts(fileparts(mfilename('fullpath')));
 addpath(root);
 aero_setup();
 
-model = first_order_model(2, 3);
+% 解析一阶模型直接写在示例里（生产路径不加载测试 fixtures）
+model = struct();
+model.name = 'first-order(a=2,b=3)';
+model.x0 = 0;
+model.dynamics = @(t, x, u, env) -2 * x + 3 * u; %#ok<INUSD>
 
 cfg = aero_default_config();
 cfg.tspan = [0, 2];

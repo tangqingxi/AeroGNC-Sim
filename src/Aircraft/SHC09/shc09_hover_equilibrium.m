@@ -1,5 +1,5 @@
-function trim = shc09_trim(p)
-%SHC09_TRIM SHC09 静态悬停配平（零空速、水平姿态、零角速度）
+function trim = shc09_hover_equilibrium(p)
+%SHC09_HOVER_EQUILIBRIUM SHC09 静态悬停平衡点（零空速、水平姿态、零角速度）
 %
 % 输出 trim：
 %   omega_rad_s     悬停旋翼转速

@@ -1,5 +1,5 @@
-function [F_b, M_b, Ve, detail] = shc09_aero_force(v_air_body, omega, delta, Omega, p, aero)
-%SHC09_AERO_FORCE 合成 SHC09 全部气动力与力矩（FRD，不含外部扰动）
+function [F_b, M_b, Ve, detail] = shc09_forces_and_moments(v_air_body, omega, delta, Omega, p, aero)
+%SHC09_FORCES_AND_MOMENTS 合成 SHC09 全部气动力与力矩（FRD，不含外部扰动）
 %
 % 输入：
 %   v_air_body - 机体系相对空气速度（FRD，3×1，m/s）

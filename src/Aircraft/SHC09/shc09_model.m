@@ -48,7 +48,7 @@ end
 
 switch mode
     case 'hover'
-        trim = shc09_trim(p);
+        trim = shc09_hover_equilibrium(p);
         x0 = trim.x0;
         initialCommand = trim.command;
     case 'rest'

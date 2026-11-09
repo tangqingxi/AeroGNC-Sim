@@ -33,7 +33,7 @@ Omega = x(s.motor);
 [wind, forceExt, torqueExt] = environment_terms(env);
 v_air_b = R_nb' * (v_n - wind);
 
-[F_b, M_b] = shc09_aero_force(v_air_b, omega, delta, Omega, p, aero);
+[F_b, M_b] = shc09_forces_and_moments(v_air_b, omega, delta, Omega, p, aero);
 
 J = p.inertia_frd_kg_m2;
 a_n = R_nb * F_b / p.mass_kg + forceExt / p.mass_kg + [0; 0; p.gravity_m_s2];

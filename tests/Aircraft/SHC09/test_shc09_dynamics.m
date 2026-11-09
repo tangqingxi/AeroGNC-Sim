@@ -21,14 +21,14 @@ cmd = struct('servos', zeros(6, 1), 'motor', 700);
 dx = model.dynamics(0, x, cmd, struct());
 check_that(dx(6) < p.gravity_m_s2, '旋翼推力未抵消重力（应使 az < g）');
 
-[F_b, M_b, ~, detail] = shc09_aero_force([0; 0; 0], [0; 0; 0], zeros(6, 1), 700, p, model.aero);
+[F_b, M_b, ~, detail] = shc09_forces_and_moments([0; 0; 0], [0; 0; 0], zeros(6, 1), 700, p, model.aero);
 check_that(F_b(3) < 0, '旋翼推力不是沿 -Z');
 check_that(detail.M_fan < 0, '旋翼空气动力反扭矩不是沿 -Z');
 check_that(detail.M_sta > 0, '固定片反扭矩方向应与旋翼反扭矩相反');
 
 % ---- 陀螺力矩符号 ---------------------------------------------------
 omega = [0.1; 0.2; 0];
-[~, ~, ~, detail] = shc09_aero_force([0; 0; 0], omega, zeros(6, 1), 800, p, model.aero);
+[~, ~, ~, detail] = shc09_forces_and_moments([0; 0; 0], omega, zeros(6, 1), 800, p, model.aero);
 expectedGyro = -p.rotor_direction * p.fan_inertia_kg_m2 * 800 * [omega(2); -omega(1); 0];
 check_that(max(abs(detail.M_gyro - expectedGyro)) < 1e-12, '陀螺力矩符号错误');
 
@@ -37,11 +37,11 @@ trim = model.trim;
 Ve = trim.exit_speed_m_s;
 [~, B_tau] = shc09_control_surfaces(zeros(6, 1), Ve, p);
 eps = 1e-7;
-[~, M0] = shc09_aero_force([0; 0; 0], [0; 0; 0], zeros(6, 1), trim.omega_rad_s, p, model.aero);
+[~, M0] = shc09_forces_and_moments([0; 0; 0], [0; 0; 0], zeros(6, 1), trim.omega_rad_s, p, model.aero);
 for i = 1:6
     delta = zeros(6, 1);
     delta(i) = eps;
-    [~, Mi] = shc09_aero_force([0; 0; 0], [0; 0; 0], delta, trim.omega_rad_s, p, model.aero);
+    [~, Mi] = shc09_forces_and_moments([0; 0; 0], [0; 0; 0], delta, trim.omega_rad_s, p, model.aero);
     numeric = (Mi - M0) / eps;
     check_that(max(abs(numeric - B_tau(:, i))) < 1e-6, ...
         '第 %d 个舵面 Jacobian 与 B_tau 不一致', i);
@@ -77,11 +77,11 @@ check_that(xp(s.motor) <= p.motor_device.omega_range_rad_s(2), '状态投影未�
 
 % ---- 气动表越界必须显式处理 ----------------------------------------
 vDescend = [0; 0; 5];
-check_error(@() shc09_aero_force(vDescend, [0; 0; 0], zeros(6, 1), 700, p, model.aero), ...
+check_error(@() shc09_forces_and_moments(vDescend, [0; 0; 0], zeros(6, 1), 700, p, model.aero), ...
     'shc09:aero:outOfDomain', '气动表越界');
 pClip = p;
 pClip.aero_domain_policy = 'clip';
-[Mclip] = shc09_aero_force(vDescend, [0; 0; 0], zeros(6, 1), 700, pClip, model.aero);
+[Mclip] = shc09_forces_and_moments(vDescend, [0; 0; 0], zeros(6, 1), 700, pClip, model.aero);
 check_that(all(isfinite(Mclip)), 'clip 策略下结果应为有限值');
 
 info = struct('passed', true, 'summary', sprintf( ...

@@ -40,7 +40,7 @@ q = x(s.quaternion);
 R_nb = shc09_quat_to_dcm(q);
 v_air = R_nb' * (x(s.velocity) - wind);
 
-[aeroForce, aeroTorque, Ve] = shc09_aero_force( ...
+[aeroForce, aeroTorque, Ve] = shc09_forces_and_moments( ...
     v_air, x(s.omega), x(s.servo), x(s.motor), p, aero);
 
 externalForceBody = R_nb' * externalForceNed;
