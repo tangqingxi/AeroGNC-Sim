@@ -9,10 +9,10 @@ classdef aero_topic_bus < handle
 % 主要接口：
 %   bus = aero_topic_bus();
 %   bus.register(name, spec);                  % 注册 Topic 与数据契约
-%   bus.publish(name, data, sample, avail, src) % 发布最新值
+%   bus.publish(name, data, sample, avail, now, src) % now = 当前仿真时间
 %   msg = bus.read(name, now);                 % 读取（检查可用/过期）
 %   [msg, status] = bus.tryRead(name, now);    % 非抛出式读取
-%   msg = bus.latest(name);                    % 最近一次发布（不做时间门限）
+%   msg = bus.latest(name, 'diagnostic');      % 仅诊断，不做时间门限
 %   tf = bus.isRegistered(name); tf = bus.hasMessage(name);
 %   names = bus.topicNames(); spec = bus.getSpec(name); seq = bus.sequence();
 %
@@ -20,7 +20,10 @@ classdef aero_topic_bus < handle
 %   - 同一 Topic 的 sample_time_s 不允许倒退；相等允许，后者覆盖前者并递增序号；
 %   - sequence 为全局发布顺序，topic_sequence 为该 Topic 的独立版本号；
 %   - 数据必须匹配注册契约（字段、尺寸、有限数值、单位仅声明不换算）；
-%   - 普通 Topic 不允许承载真值；真值 Topic 必须以 "truth/" 开头并在注册时声明；
+%   - publish 必须携带当前时间 now，且 now >= available_time_s；提前发布未来
+%     消息会覆盖仍有效的旧样本，因此被直接拒绝；
+%   - "truth/" 前缀只是命名约定，不等于访问控制：真实状态仍只允许 Sensor
+%     回调与明确授权的测试适配器读取，生产 GNC 不得读取真值；
 %   - 总线不创建 Timer、线程、网络或文件 I/O。
 %
 % 未来接入 Simulation 时，应由 Simulation 持有唯一实例并作为权威通信状态，
@@ -48,7 +51,7 @@ methods
         if obj.specs.isKey(name)
             error('aero:bus:duplicateTopic', 'Topic "%s" 已注册', name);
         end
-        validateSpec(spec);
+        spec = canonicalizeSpec(spec);
         if spec.allow_ground_truth && ~startsWith(name, 'truth/')
             error('aero:bus:groundTruthTopic', ...
                 'Topic "%s" 声明承载真值，但名称必须以 "truth/" 开头', name);
@@ -61,22 +64,34 @@ methods
         obj.registeredNames{end + 1} = name;
     end
 
-    function publish(obj, name, data, sampleTime, availableTime, source)
+    function publish(obj, name, data, sampleTime, availableTime, now, source)
         name = obj.normalizeName(name);
         spec = obj.requireRegistered(name);
 
         if nargin < 5 || isempty(availableTime)
             availableTime = sampleTime;
         end
-        if nargin < 6 || isempty(source)
+        if nargin < 6 || isempty(now)
+            error('aero:bus:invalidTime', ...
+                'publish 需要显式 now（当前仿真时间），以阻止提前发布未来消息');
+        end
+        if nargin < 7 || isempty(source)
             source = '';
         end
 
         obj.requireTime(sampleTime, 'sample_time_s');
         obj.requireTime(availableTime, 'available_time_s');
+        obj.requireTime(now, 'now');
         if availableTime < sampleTime
             error('aero:bus:invalidTime', ...
                 'Topic "%s" 的 available_time_s 不能早于 sample_time_s', name);
+        end
+        % Latest-Value 安全：消息必须在可用时刻之后才能发布，否则会覆盖
+        % 仍在有效期内的旧样本，造成消费者读到“未来”数据。
+        if now < availableTime
+            error('aero:bus:notYetAvailable', ...
+                'Topic "%s" 在 t=%.9f 提前发布（available=%.9f），禁止覆盖仍有效的旧样本', ...
+                name, now, availableTime);
         end
 
         if obj.messages.isKey(name)
@@ -159,7 +174,13 @@ methods
         status = 'ok';
     end
 
-    function msg = latest(obj, name)
+    function msg = latest(obj, name, mode)
+        % 仅诊断用途：不检查可用时间，正式 GNC 消费者必须使用 read/tryRead。
+        if nargin < 3 || ~(ischar(mode) || (isstring(mode) && isscalar(mode))) ...
+                || ~strcmpi(char(mode), 'diagnostic')
+            error('aero:bus:diagnosticRequired', ...
+                'latest 仅用于诊断；正式读取请使用 read/tryRead（需传入 ''diagnostic'' 才允许）');
+        end
         name = obj.normalizeName(name);
         obj.requireRegistered(name);
         if ~obj.messages.isKey(name)
@@ -255,14 +276,28 @@ end
 end
 
 % ===========================================================================
-function validateSpec(spec)
-required = {'fields', 'dimensions', 'units', 'allow_ground_truth', 'max_age_s'};
+function spec = canonicalizeSpec(spec)
+% 手工构造的 spec 也必须经过 aero_topic_spec 的完整校验，避免绕过契约规范。
+allowed = {'fields', 'dimensions', 'units', 'allow_ground_truth', 'max_age_s', 'description'};
 if ~isstruct(spec) || ~isscalar(spec)
     error('aero:bus:invalidSpec', 'spec 必须是 aero_topic_spec 生成的标量结构体');
 end
+unknown = setdiff(fieldnames(spec), allowed);
+if ~isempty(unknown)
+    error('aero:bus:invalidSpec', 'spec 含未知字段：%s', strjoin(unknown, ', '));
+end
+required = {'fields', 'dimensions', 'units', 'allow_ground_truth', 'max_age_s'};
 for k = 1:numel(required)
     if ~isfield(spec, required{k})
         error('aero:bus:invalidSpec', 'spec 缺少字段：%s', required{k});
     end
 end
+
+options = struct();
+options.allow_ground_truth = spec.allow_ground_truth;
+options.max_age_s = spec.max_age_s;
+if isfield(spec, 'description')
+    options.description = spec.description;
+end
+spec = aero_topic_spec(spec.fields, spec.dimensions, spec.units, options);
 end

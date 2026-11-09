@@ -81,6 +81,29 @@ if save.enabled && isempty(save.path)
 end
 cfg.save = save;
 
+% ---- 通信配置 ---------------------------------------------------------
+comm = cfg.communication;
+if ~isstruct(comm) || ~isscalar(comm)
+    error('aero:config:communication', 'communication 必须是标量结构体');
+end
+if ~isfield(comm, 'enabled') || isempty(comm.enabled)
+    comm.enabled = false;
+end
+if ~isscalar(comm.enabled) ...
+        || ~(islogical(comm.enabled) || isnumeric(comm.enabled))
+    error('aero:config:communication', 'communication.enabled 必须是逻辑标量');
+end
+comm.enabled = logical(comm.enabled);
+if ~isfield(comm, 'topics')
+    comm.topics = {};
+end
+if ~iscell(comm.topics)
+    error('aero:config:communication', 'communication.topics 必须是 cell 数组');
+end
+comm.command_topic = normalize_topic_name(comm, 'command_topic');
+comm.held_command_topic = normalize_topic_name(comm, 'held_command_topic');
+cfg.communication = comm;
+
 % ---- 组件 -------------------------------------------------------------
 cfg.components = normalize_components(cfg.components);
 
@@ -99,7 +122,7 @@ end
 
 n = numel(input);
 template = struct('name', '', 'kind', '', 'period', 0, 'offset', 0, ...
-    'priority', 0, 'delay', 0, 'latches', false, 'step', [], 'sample', []);
+    'priority', 0, 'delay', 0, 'latches', false, 'topic', '', 'step', [], 'sample', []);
 components = repmat(template, 1, n);
 
 seenNames = cell(1, n);
@@ -173,6 +196,15 @@ for i = 1:n
             '组件 "%s" 是 sensor，不能锁存控制输入', name);
     end
 
+    topic = '';
+    if isfield(entry, 'topic') && ~isempty(entry.topic)
+        topic = char(entry.topic);
+    end
+    if ~strcmp(kind, 'sensor') && ~isempty(topic)
+        error('aero:config:topic', ...
+            '组件 "%s" 是 periodic，只有 sensor 可以声明 topic（命令 Topic 由通信配置统一发布）', name);
+    end
+
     step = [];
     sample = [];
     if strcmp(kind, 'sensor')
@@ -194,8 +226,21 @@ for i = 1:n
     components(i).priority = double(priority);
     components(i).delay = double(delay);
     components(i).latches = latches;
+    components(i).topic = topic;
     components(i).step = step;
     components(i).sample = sample;
+end
+end
+
+% ===========================================================================
+function value = normalize_topic_name(comm, field)
+value = '';
+if isfield(comm, field) && ~isempty(comm.(field))
+    raw = comm.(field);
+    if ~(ischar(raw) || (isstring(raw) && isscalar(raw)))
+        error('aero:config:communication', 'communication.%s 必须是字符或字符串', field);
+    end
+    value = char(raw);
 end
 end
 

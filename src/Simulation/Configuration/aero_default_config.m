@@ -11,6 +11,7 @@ function cfg = aero_default_config()
 %   seed            随机种子（内核本身不消耗随机数，仅记录以复现实验）
 %   time_tolerance  同时事件合并容差；为空时取 1e-12*max(1,|tf|)
 %   results_root    结果根目录；为空时使用 <项目根>/results
+%   communication   Topic Bus 配置：enabled/topics/command_topic/held_command_topic
 %   save            持久化设置：enabled、path、estimated_bytes
 %   verbose         是否打印运行摘要
 %
@@ -26,6 +27,8 @@ cfg.environment = struct();
 cfg.seed = 0;
 cfg.time_tolerance = [];
 cfg.results_root = '';
+cfg.communication = struct('enabled', false, 'topics', {{}}, ...
+    'command_topic', '', 'held_command_topic', '');
 cfg.save = struct('enabled', false, 'path', '', 'estimated_bytes', 0);
 cfg.verbose = false;
 

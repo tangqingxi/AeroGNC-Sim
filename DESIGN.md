@@ -211,7 +211,7 @@ B_acc = J_frd⁻¹ · B_tau
 - 悬停配平（不依赖气动表，检查非对称生效行程上下界）、几何/效能/动力学/执行器/停机状态/
   指令独立性/输出语义/元数据/集成/目录治理测试，共 23 项。
 - Communication-Core：Latest-Value Topic Bus（注册、发布、读取、契约校验、可用/过期/时间倒退处理、
-  真值隔离），单元测试 1 项；尚未接入 `aero_sim`（见 §14）。
+  真值隔离）并已接入 `aero_sim`（可选，默认关闭）；全项目共 25 项测试。
 
 **未实现 / 依赖外部条件**
 
@@ -303,10 +303,10 @@ AeroGNC-Sim/
 |---|---|
 | `bus = aero_topic_bus()` | 创建总线（handle 对象）；不启动时钟或线程 |
 | `bus.register(name, spec)` | 注册 Topic 与数据契约；重名、非法名称、真值命名违规立即报错 |
-| `bus.publish(name, data, sample_t, available_t, source)` | 发布最新值；`available_t` 缺省等于 `sample_t` |
+| `bus.publish(name, data, sample_t, available_t, now, source)` | 发布最新值；`now` 必填，且 `now >= available_t`，禁止提前发布未来消息 |
 | `msg = bus.read(name, now)` | 严格读取：未注册/未发布/尚不可用/过期分别报错 |
 | `[msg, status] = bus.tryRead(name, now)` | 非抛出式读取，`status` 为 `ok`/`unknown_topic`/`missing`/`not_available`/`stale` |
-| `msg = bus.latest(name)` | 最近一次发布（不做时间门限，供日志/检查） |
+| `msg = bus.latest(name, 'diagnostic')` | 仅诊断；必须显式传 `'diagnostic'`，正式消费者应使用 read/tryRead |
 | `bus.topicNames()` / `bus.getSpec(name)` / `bus.sequence()` | 注册列表、契约与全局发布序号 |
 
 契约由 `aero_topic_spec(fields, dimensions, units, options)` 构造，声明字段名、尺寸、单位、
@@ -335,9 +335,27 @@ message.source             可选的来源标识
   单位只声明不换算。
 - **真值隔离**：普通 Topic 不允许承载真值；只有以 `truth/` 开头且声明 `allow_ground_truth=true`
   的 Topic 才能发布真值；普通 GNC Topic 命中真值标志时直接报错。
+  **"truth/" 前缀只是命名约定，不是访问控制**：真实状态仍只允许 Sensor 回调与明确授权的
+  测试适配器读取，生产 GNC 不得读取真值。
 - **无自有时间/调度**：总线不创建 Timer、线程、网络或文件 I/O；时间由 Simulation 传入。
 
-### 14.4 已知限制
+### 14.5 与 `aero_sim` 的集成（Communication-Integration）
+
+- `cfg.communication.enabled=true` 时，`aero_sim` 创建并持有**唯一** `aero_topic_bus`，作为
+  `bus.topics` 提供给组件；默认关闭，关闭时不创建 Bus、结果结构不变。
+- Topic 由 `cfg.communication.topics`（cell of `struct('name',…,'spec',…)`）显式注册；
+  `command_topic` 与 `held_command_topic` 必须指向已注册 Topic。
+- Sensor：组件新增可选 `topic` 字段；在**发布事件**（测量真正可用）时发布
+  `struct('value', v(:), 'sample_time_s', sampleTime)`，`available_time` 等于当前事件时刻，
+  因此不会提前发布未来样本。
+- 命令：内核在 `bus.command` / `bus.held_command` **发生变化**时分别发布到
+  `command_topic` / `held_command_topic`（数值命令打包为 `struct('value', cmd(:))`，
+  结构体命令原样发布）。两者 Topic 分离，锁存频率与计算频率可以不同，原有锁存逻辑不变。
+- 启用时 `result.communication` 记录 `enabled/topic_names/publish_count/bus` 句柄，便于验证；
+  关闭时该字段不存在，旧结果结构保持不变。
+- 内核不解释 Topic 字段名，不为 SHC09 或任何控制算法硬编码契约。
+
+### 14.6 已知限制
 
 1. 仅 Latest-Value；未来 ECL 等需要逐样本消费的高频数据需另行设计，不在本轮。
 2. 尚未接入 `aero_sim`；接入时必须由 Simulation 持有唯一实例，禁止第二套并行 Bus，

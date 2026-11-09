@@ -20,7 +20,18 @@ check_error(@() bus.register('truth/a/b', posSpec), 'aero:bus:invalidName', '过
 check_error(@() bus.register('raw_topic', struct('fields', {{'x'}})), ...
     'aero:bus:invalidSpec', '不完整契约');
 
-% ---- 真值 Topic 规则 -------------------------------------------------
+% 手工构造的 spec 也必须经过完整校验，不能绕过 aero_topic_spec
+badSpec = posSpec;
+badSpec.dimensions = {[3 1]};
+check_error(@() bus.register('bad_dims', badSpec), 'aero:bus:invalidSpec', '手工契约尺寸非法');
+badSpec = posSpec;
+badSpec.fields = {'position', 'position'};
+check_error(@() bus.register('bad_fields', badSpec), 'aero:bus:invalidSpec', '手工契约字段重复');
+badSpec = posSpec;
+badSpec.unexpected = 1;
+check_error(@() bus.register('bad_extra', badSpec), 'aero:bus:invalidSpec', '手工契约多余字段');
+
+% ---- 真值 Topic 规则（命名约定，不是访问控制） ----------------------
 defaultSpec = aero_topic_spec({'x'}, {[1 1]}, {'-'});
 truthSpec = aero_topic_spec({'x'}, {[1 1]}, {'-'}, ...
     struct('allow_ground_truth', true));
@@ -33,8 +44,8 @@ check_that(bus.getSpec('truth/state').allow_ground_truth, '真值 Topic 注册�
 
 % ---- 发布与读取 ------------------------------------------------------
 payload = struct('position', [1; 2; 3], 'velocity', [0.1; 0.2; 0.3]);
-bus.publish('vehicle_local_position', payload, 1.0, 1.05, 'navigation');
-msg = bus.latest('vehicle_local_position');
+bus.publish('vehicle_local_position', payload, 1.0, 1.05, 1.05, 'navigation');
+msg = bus.latest('vehicle_local_position', 'diagnostic');
 check_that(msg.sample_time_s == 1.0 && msg.available_time_s == 1.05, '时间戳记录错误');
 check_that(msg.sequence == 1 && msg.topic_sequence == 1, '首次发布序号错误');
 check_that(strcmp(msg.source, 'navigation'), '来源未记录');
@@ -46,27 +57,43 @@ check_that(isequal(msg.data, payload), '读取的载荷不一致');
 [missingMsg, status] = bus.tryRead('vehicle_local_position', 1.04);
 check_that(isempty(missingMsg) && strcmp(status, 'not_available'), 'tryRead 可用性状态错误');
 
+% latest 仅诊断：不带关键字必须拒绝
+check_error(@() bus.latest('vehicle_local_position'), ...
+    'aero:bus:diagnosticRequired', 'latest 未要求诊断标志');
+
+% ---- 提前发布未来消息必须被拒绝 ------------------------------------
+check_error(@() bus.publish('vehicle_local_position', payload, 1.2, 1.30, 1.25), ...
+    'aero:bus:notYetAvailable', '提前发布未来消息');
+check_that(bus.latest('vehicle_local_position', 'diagnostic').sample_time_s == 1.0, ...
+    '被拒绝的提前发布修改了最新消息');
+
 % ---- 多 Topic 独立版本与全局顺序 ------------------------------------
 bus.register('vehicle_attitude', aero_topic_spec({'q'}, {[4 1]}, {'-'}));
-bus.publish('vehicle_attitude', struct('q', [1; 0; 0; 0]), 1.0, 1.0, 'navigation');
-check_that(bus.latest('vehicle_attitude').topic_sequence == 1, '第二 Topic 版本号未独立');
-check_that(bus.latest('vehicle_attitude').sequence == 2, '全局顺序未递增');
+bus.publish('vehicle_attitude', struct('q', [1; 0; 0; 0]), 1.0, 1.0, 1.0, 'navigation');
+check_that(bus.latest('vehicle_attitude', 'diagnostic').topic_sequence == 1, ...
+    '第二 Topic 版本号未独立');
+check_that(bus.latest('vehicle_attitude', 'diagnostic').sequence == 2, '全局顺序未递增');
 check_that(bus.sequence() == 2, 'sequence() 与全局顺序不一致');
 
 payload2 = struct('position', [1; 2; 4], 'velocity', [0.1; 0.2; 0.4]);
-bus.publish('vehicle_local_position', payload2, 1.0, 1.05, 'navigation');
-check_that(bus.latest('vehicle_local_position').topic_sequence == 2, '同 Topic 版本未递增');
-check_that(bus.latest('vehicle_local_position').sequence == 3, '全局顺序未递增');
-check_that(isequal(bus.latest('vehicle_local_position').data, payload2), '同一时刻后发布未覆盖');
+bus.publish('vehicle_local_position', payload2, 1.0, 1.05, 1.05, 'navigation');
+check_that(bus.latest('vehicle_local_position', 'diagnostic').topic_sequence == 2, ...
+    '同 Topic 版本未递增');
+check_that(bus.latest('vehicle_local_position', 'diagnostic').sequence == 3, '全局顺序未递增');
+check_that(isequal(bus.latest('vehicle_local_position', 'diagnostic').data, payload2), ...
+    '同一时刻后发布未覆盖');
 
 % ---- 时间倒退与非法时间 --------------------------------------------
-check_error(@() bus.publish('vehicle_local_position', payload, 0.9, 0.9), ...
+check_error(@() bus.publish('vehicle_local_position', payload, 0.9, 0.9, 0.9), ...
     'aero:bus:timeRegression', '时间倒退');
-check_that(isequal(bus.latest('vehicle_local_position').data, payload2), '时间倒退修改了消息');
-check_error(@() bus.publish('vehicle_local_position', payload, NaN, 1.0), ...
+check_that(isequal(bus.latest('vehicle_local_position', 'diagnostic').data, payload2), ...
+    '时间倒退修改了消息');
+check_error(@() bus.publish('vehicle_local_position', payload, NaN, 1.0, 1.0), ...
     'aero:bus:invalidTime', 'NaN 采样时间');
-check_error(@() bus.publish('vehicle_local_position', payload, 2.0, 1.9), ...
+check_error(@() bus.publish('vehicle_local_position', payload, 2.0, 1.9, 2.0), ...
     'aero:bus:invalidTime', '可用时间早于采样时间');
+check_error(@() bus.publish('vehicle_local_position', payload, 2.0, 2.0), ...
+    'aero:bus:invalidTime', '缺少 now');
 
 % ---- 缺失与过期 ------------------------------------------------------
 [noMsg, status] = bus.tryRead('unknown_topic', 0);
@@ -77,7 +104,7 @@ bus.register('vehicle_status', aero_topic_spec({'armed'}, {[1 1]}, {'-'}));
 check_that(isempty(noMsg) && strcmp(status, 'missing'), '未发布 Topic 状态错误');
 check_error(@() bus.read('vehicle_status', 0), 'aero:bus:missingMessage', '未发布读取');
 
-bus.publish('vehicle_local_position', payload2, 2.0, 2.0);
+bus.publish('vehicle_local_position', payload2, 2.0, 2.0, 2.0);
 msg = bus.read('vehicle_local_position', 2.5);
 check_that(isequal(msg.data, payload2), '有效期内读取失败');
 [staleMsg, status] = bus.tryRead('vehicle_local_position', 2.6);
@@ -87,22 +114,40 @@ check_error(@() bus.read('vehicle_local_position', 2.6), ...
 
 % ---- 载荷契约 --------------------------------------------------------
 bad = struct('position', [1; 2; 3]);
-check_error(@() bus.publish('vehicle_local_position', bad, 3.0), ...
+check_error(@() bus.publish('vehicle_local_position', bad, 3.0, 3.0, 3.0), ...
     'aero:bus:schemaMissingField', '缺少字段');
 bad = struct('position', [1; 2; 3], 'velocity', [0; 0; 0], 'extra', 1);
-check_error(@() bus.publish('vehicle_local_position', bad, 3.0), ...
+check_error(@() bus.publish('vehicle_local_position', bad, 3.0, 3.0, 3.0), ...
     'aero:bus:schemaExtraField', '多余字段');
 bad = struct('position', [1 2 3], 'velocity', [0; 0; 0]);
-check_error(@() bus.publish('vehicle_local_position', bad, 3.0), ...
+check_error(@() bus.publish('vehicle_local_position', bad, 3.0, 3.0, 3.0), ...
     'aero:bus:schemaDimension', '行向量尺寸错误');
 bad = struct('position', [1; 2; NaN], 'velocity', [0; 0; 0]);
-check_error(@() bus.publish('vehicle_local_position', bad, 3.0), ...
+check_error(@() bus.publish('vehicle_local_position', bad, 3.0, 3.0, 3.0), ...
     'aero:bus:schemaValue', '非有限值');
 bad = struct('position', 'abc', 'velocity', [0; 0; 0]);
-check_error(@() bus.publish('vehicle_local_position', bad, 3.0), ...
+check_error(@() bus.publish('vehicle_local_position', bad, 3.0, 3.0, 3.0), ...
     'aero:bus:schemaType', '非数值字段');
-check_error(@() bus.publish('vehicle_status', [1 2 3], 0), ...
+check_error(@() bus.publish('vehicle_status', [1 2 3], 0, 0, 0), ...
     'aero:bus:schemaType', '非结构体载荷');
+
+% ---- 重复读取与真值标记 ----------------------------------------------
+repeatSpec = aero_topic_spec({'x'}, {[1 1]}, {'-'});
+bus.register('repeat/topic', repeatSpec);
+bus.publish('repeat/topic', struct('x', 1), 0.1, 0.1, 0.1, 'test');
+firstRead = bus.read('repeat/topic', 0.2);
+secondRead = bus.read('repeat/topic', 0.2);
+check_that(firstRead.topic_sequence == secondRead.topic_sequence, ...
+    '重复读取同一消息的 topic_sequence 发生变化');
+bus.publish('repeat/topic', struct('x', 2), 0.2, 0.2, 0.2, 'test');
+thirdRead = bus.read('repeat/topic', 0.3);
+check_that(thirdRead.topic_sequence == secondRead.topic_sequence + 1, ...
+    '新消息未递增 topic_sequence');
+
+leakSpec = aero_topic_spec({'is_ground_truth'}, {[1 1]}, {'-'});
+bus.register('sensor/leak', leakSpec);
+check_error(@() bus.publish('sensor/leak', struct('is_ground_truth', 1), 0, 0, 0), ...
+    'aero:bus:groundTruthForbidden', '普通 Topic 携带真值标志');
 
 % ---- 现有 Simulation 接口不受影响 ----------------------------------
 cfg = aero_default_config();
@@ -113,7 +158,7 @@ result = aero_sim(scalar_integrator_model(), cfg);
 check_that(abs(result.state(end) - 0.1) < 1e-9, 'aero_sim 行为因通信核心改变');
 
 info = struct('passed', true, 'summary', sprintf( ...
-    '注册/发布/读取/多 Topic 版本/时间与可用性/过期/契约/真值策略通过，共 %d 条 Topic', ...
-    numel(bus.topicNames())));
+    ['注册/发布/读取/多 Topic 版本/时间与可用性/过期/契约/真值策略通过，' ...
+     'premature publish 被拒绝，共 %d 条 Topic'], numel(bus.topicNames())));
 
 end

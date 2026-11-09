@@ -19,6 +19,11 @@ function result = aero_sim(model, cfg)
 %   连续状态只通过 sensor 组件的 sample(t,x) 读取；periodic 组件永远拿不到
 %   真值（bus.truth 恒为空）。内核记录真值仅用于验证与日志。
 %
+% 通信（可选，默认关闭）：
+%   cfg.communication.enabled=true 时创建唯一 aero_topic_bus 并作为 bus.topics
+%   提供给组件；sensor 在测量可用事件发布 Topic，计算结果与锁存结果分别发布到
+%   command_topic / held_command_topic。关闭时行为与旧版完全一致。
+%
 % 参见 aero_default_config, aero_schedule, aero_save_result。
 
 if nargin < 2
@@ -61,6 +66,30 @@ bus.measurements = {};                   % 已可用测量（按发布时间排�
 bus.command = cfg.initial_command;       % 控制计算值
 bus.held_command = cfg.initial_command;  % 真正进入动力学的锁存值
 bus.truth = [];                          % 恒为空：周期组件不得读取真值
+
+% ---- 3b. 通信总线（唯一实例，默认关闭） -------------------------------
+comm = aero_communication_setup(cfg.communication);
+bus.topics = comm.bus;
+lastCommand = bus.command;
+lastHeld = bus.held_command;
+if comm.enabled
+    for cIdx = 1:numel(cfg.components)
+        topicName = cfg.components(cIdx).topic;
+        if ~isempty(topicName) && ~comm.bus.isRegistered(topicName)
+            error('aero:comm:unknownMeasurementTopic', ...
+                '传感器 "%s" 的 topic "%s" 未注册', cfg.components(cIdx).name, topicName);
+        end
+    end
+    t0 = cfg.tspan(1);
+    if ~isempty(comm.command_topic)
+        comm.bus.publish(comm.command_topic, aero_command_payload(bus.command), ...
+            t0, t0, t0, 'simulation');
+    end
+    if ~isempty(comm.held_command_topic)
+        comm.bus.publish(comm.held_command_topic, aero_command_payload(bus.held_command), ...
+            t0, t0, t0, 'simulation');
+    end
+end
 
 x = cfg.x0;
 if isfield(model, 'project') && ~isempty(model.project)
@@ -126,6 +155,14 @@ for g = 1:nGroups
             measurementCount = measurementCount + 1;
             measurementLog{measurementCount} = measurement;
             bus.measurements{end + 1} = measurement; %#ok<AGROW>
+            % 只有到了实际可用时刻才发布到 Topic Bus：
+            % sample_time 保留采样时刻，available_time 等于当前事件时刻。
+            if comm.enabled && ~isempty(component.topic)
+                payload = struct('value', measurement.value(:), ...
+                    'sample_time_s', measurement.sample_time);
+                comm.bus.publish(component.topic, payload, ...
+                    measurement.sample_time, t, t, component.name);
+            end
             eventComponent{k} = component.name;
             eventAction{k} = 'publish';
 
@@ -155,6 +192,25 @@ for g = 1:nGroups
                 sprintf('组件 "%s" 在 t=%.17g 写入的 bus.held_command', component.name, t));
             eventComponent{k} = component.name;
             eventAction{k} = 'step';
+        end
+
+        % 计算命令与锁存命令分别映射到独立 Topic；只发布“发生变化”的值，
+        % 不改变原有 command / held_command 的锁存语义。
+        if comm.enabled
+            if ~isequaln(bus.command, lastCommand)
+                if ~isempty(comm.command_topic)
+                    comm.bus.publish(comm.command_topic, ...
+                        aero_command_payload(bus.command), t, t, t, 'simulation');
+                end
+                lastCommand = bus.command;
+            end
+            if ~isequaln(bus.held_command, lastHeld)
+                if ~isempty(comm.held_command_topic)
+                    comm.bus.publish(comm.held_command_topic, ...
+                        aero_command_payload(bus.held_command), t, t, t, 'simulation');
+                end
+                lastHeld = bus.held_command;
+            end
         end
     end
 
@@ -201,6 +257,15 @@ result.stats = struct( ...
     'latch_events', latchCount, ...
     'total_internal_points', totalInternalPoints, ...
     'wall_time_s', wallTime);
+
+% 通信启用时记录总线摘要与句柄，便于验证与诊断；关闭时结果结构保持不变。
+if comm.enabled
+    result.communication = struct( ...
+        'enabled', true, ...
+        'topic_names', {comm.topic_names}, ...
+        'publish_count', comm.bus.sequence(), ...
+        'bus', comm.bus);
+end
 
 % ---- 6. 按配置持久化（默认只在内存中返回） ----------------------------
 if cfg.save.enabled
