@@ -1,7 +1,7 @@
 # AeroGNC-Sim
 
-> **版本状态**：面向 V1.0 开发中；Foundation（仿真内核、SHC09 机型、通用执行器、统一 Topic Bus）
-> 已完成，基础 GNC 与场景尚未完成。尚未发布 `v1.0.0`。
+> **版本状态**：面向 V1.0 开发中；Foundation 已完成，基础 GNC（P–PID–P–PID + PINV）
+> 与两类闭环场景已实现、等待验收；V1.0 尚未发布。
 
 模块化 MATLAB GNC 科研仿真平台。用户通过选择机型（Aircraft）、设备型号（Components）、
 制导/导航/控制算法与场景来搭建仿真，统一由 Simulation 内核运行。SHC09 涵道式尾座无人机
@@ -24,6 +24,10 @@
 - 结果记录模型元数据（版本、质量、惯量、设备型号、生效参数、覆盖值与气动数据 SHA256）。
 - 通信：V1.0 始终使用单一 Latest-Value Topic Bus；Sensor 在测量可用时刻发布，
   计算命令与锁存命令使用独立 Topic，结果保存普通值快照，可选有界发布日志（仅分析用）。
+- GNC：位置 P + 速度 PID + 姿态 P + 角速度 PID，六舵面 PINV 分配与独立电机推力；
+  悬停位置保持与单轴角速度阶跃两个场景。控制量全部 SI 单位，PX4 归一化增益经重新换算。
+- WTR 导出：把一次仿真导出为 WindTrace `windtrace.flight.v1`（`.wtr`），
+  原始 `simulation.mat` 与可视化文件同目录保存。
 
 ## 环境要求
 
@@ -74,13 +78,32 @@ V1.0 始终使用单一 Topic Bus。`cfg.communication.topics` 注册 Topic 契�
 `topic`，测量在可用时刻发布；`command_topic` / `held_command_topic` 分别映射计算与锁存命令。
 `result.communication` 是普通值快照（不含 Bus 句柄），可选发布日志默认关闭。
 
+## GNC 与 WindTrace
+
+```matlab
+aero_setup();
+source = struct('type', 'external', 'file', 'path/to/shc09_aero.mat');
+s = gnc_hover_scenario(struct('aero_source', source, 'tspan', [0, 4]));
+result = aero_sim(s.model, s.cfg);
+
+out = wtr_export(result, s.model, struct( ...
+    'scenario', s.name, 'signature', struct('tspan', s.cfg.tspan), ...
+    'gains', s.gains));
+% out.wtr_path 可直接在 WindTrace 中打开
+```
+
+`gnc_rate_step_scenario` 提供单轴角速度阶跃。WTR 导出要求发布日志完整
+（`dropped==0`）；脚本会先写 `simulation.mat`，再写 `flight.wtr`，拒绝覆盖已有文件。
+真实气动数据缺失时，`fixture` 只能验证软件通路，不能作为物理闭环结论。
+
 ## 测试
 
 ```bat
 matlab -batch "run('tests/run_tests.m')"
 ```
 
-覆盖内核 14 项 + SHC09/Components/接口/目录治理 9 项 + Communication 4 项，共 27 项。SHC09 气动的
+覆盖内核 14 项 + SHC09/Components/接口/目录治理 9 项 + Communication 4 项 + GNC 3 项 +
+WTR 1 项，共 31 项。SHC09 气动的
 **物理验证依赖外部数据**：结构测试使用 `tests/fixtures/shc09_aero_fixture.m` 中
 明确标注的合成系数（全零气动表），只验证代码通路、符号与积分，不代表气动性能。
 
@@ -92,6 +115,6 @@ matlab -batch "run('tests/run_tests.m')"
 
 ## 尚未实现
 
-Guidance / Navigation / Control / 控制分配、Scenarios、传感器模型、二阶或辨识型执行器动态、
-真实气动数据入库、实机参数辨识。当前参数中，惯量与执行器动态参数为参考值/名义值，
+INDI/MPC、复杂控制分配、真实传感器/噪声模型、EKF2/ECL、GNSS、二阶或辨识型执行器动态、
+真实气动数据入库、实机参数辨识。当前 GNC 增益、惯量与执行器动态参数为参考值/名义值，
 不得表述为实机精度。
