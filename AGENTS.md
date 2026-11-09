@@ -47,6 +47,7 @@
 |---|---|
 | `src/Simulation/` | 仿真内核：配置、调度、积分、锁存、事件与结果组装 |
 | `src/Simulation/Results/` | 结果持久化、容量策略、路径隔离 |
+| `src/Simulation/Communication/` | Topic 总线与数据契约（Latest-Value，不含时钟/调度） |
 | `src/Aircraft/SHC09/` | 首个机型：装配、参数、气动、动力学、状态与输出 |
 | `src/Components/Actuators/Servo/`、`.../Motor/` | 通用执行器动力学与设备型号参数（MATLAB 包） |
 | `src/GNC/`、`src/Scenarios/`、`src/Sensors/` | **尚未实现**；不预建空目录，实现时再建并登记 `aero_setup.m` |
@@ -60,6 +61,8 @@
 - MATLAB 路径由根目录 `aero_setup.m` **显式**登记，禁止对整个仓库递归 `addpath`。
 - 新增机型/设备后，平台仍须保持多机型、多设备通用：`Simulation` 不得识别机型或设备字段名，
   通用执行器动力学不得出现品牌判断，设备型号参数不得包含机型装配信息。
+- 通信：Topic Bus 只做 Latest-Value 传递，不实现时钟或调度；由 Simulation 持有唯一实例，
+  禁止建立第二套并行 Bus；普通 Topic 不得承载 GroundTruth。
 
 ### 5.2 可读性
 

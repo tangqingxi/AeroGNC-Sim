@@ -27,7 +27,7 @@ SHC09 是第一个完整机型实例，不是平台的唯一对象。
 
 | 模块 | 负责 | 不负责 |
 |---|---|---|
-| `src/Simulation/` | 虚拟时钟、事件调度、分段 `ode45`、指令锁存、测量发布、日志、结果持久化 | 任何机型气动、设备型号、控制算法 |
+| `src/Simulation/` | 虚拟时钟、事件调度、分段 `ode45`、指令锁存、测量发布、Topic 通信、日志、结果持久化 | 任何机型气动、设备型号、控制算法 |
 | `src/Aircraft/<TYPE>/` | 整机装配、质量惯量、几何、气动、完整动力学、状态定义、标准输出 | 通用设备动态、控制算法、场景 |
 | `src/Components/` | 可复用设备型号参数与通用设备动力学 | 安装位置、通道编号、机型专属效能、控制器参数 |
 | `src/GNC/`（未实现） | Guidance / Navigation / Control 与可替换分配 | 物理对象、场景 |
@@ -210,6 +210,8 @@ B_acc = J_frd⁻¹ · B_tau
 - SHC09 20 状态非线性六自由度模型：刚体、涵道、机翼、六舵面、陀螺、反扭矩、风扰。
 - 悬停配平（不依赖气动表，检查非对称生效行程上下界）、几何/效能/动力学/执行器/停机状态/
   指令独立性/输出语义/元数据/集成/目录治理测试，共 23 项。
+- Communication-Core：Latest-Value Topic Bus（注册、发布、读取、契约校验、可用/过期/时间倒退处理、
+  真值隔离），单元测试 1 项；尚未接入 `aero_sim`（见 §14）。
 
 **未实现 / 依赖外部条件**
 
@@ -237,6 +239,7 @@ AeroGNC-Sim/
 │   │   ├── aero_integrate.m       连续积分（单文件，不另建目录）
 │   │   ├── Events/                调度、测量、组件 schema
 │   │   ├── Configuration/         默认配置、配置校验、命令校验
+│   │   ├── Communication/         Topic 总线与数据契约
 │   │   ├── Results/               保存、容量、路径安全
 │   │   └── Internal/              环境信息、项目根
 │   ├── Aircraft/SHC09/
@@ -254,7 +257,7 @@ AeroGNC-Sim/
 │   ├── run_tests.m                唯一入口（登记表与磁盘一致性检查）
 │   ├── helpers/                   断言与测试辅助
 │   ├── fixtures/                  测试替身（生产路径不加载）
-│   ├── Simulation/{Core,Events,Results}/
+│   ├── Simulation/{Core,Events,Communication,Results}/
 │   ├── Aircraft/SHC09/
 │   └── test_project_layout.m      目录、入口、重复定义检查
 ├── examples/
@@ -268,6 +271,7 @@ AeroGNC-Sim/
 | 运行级能力（时钟、调度、积分） | `src/Simulation/` 或其职责子目录 |
 | 新配置项/校验规则 | `src/Simulation/Configuration/` |
 | 结果存储/容量/路径逻辑 | `src/Simulation/Results/` |
+| Topic 总线/数据契约 | `src/Simulation/Communication/` |
 | 新机型 | `src/Aircraft/<TYPE>/`：入口、参数、动力学、输出放根，物理子目录按领域 |
 | 机型内部辅助（状态索引、投影、元数据） | `src/Aircraft/<TYPE>/Internal/` |
 | 新设备型号 | `src/Components/Actuators/<Class>/+<Class>Devices/+<MODEL>/parameters.m` |
@@ -287,3 +291,55 @@ AeroGNC-Sim/
 - `which -all` 是否仍唯一，旧名称是否已不可解析；
 - 是否产生重复实现、空目录或按轮次命名的目录；
 - README/DESIGN/AGENTS 是否同步。
+
+## 14. Communication Topic Bus（Communication-Core）
+
+定位：Guidance / Navigation / Control 等模块通过 Topic 名称交换数据，不读取彼此内部状态。
+本轮只交付通信核心与单元测试，**尚未接入 `aero_sim`**；接入属于 Communication-Integration。
+
+### 14.1 接口
+
+| 接口 | 语义 |
+|---|---|
+| `bus = aero_topic_bus()` | 创建总线（handle 对象）；不启动时钟或线程 |
+| `bus.register(name, spec)` | 注册 Topic 与数据契约；重名、非法名称、真值命名违规立即报错 |
+| `bus.publish(name, data, sample_t, available_t, source)` | 发布最新值；`available_t` 缺省等于 `sample_t` |
+| `msg = bus.read(name, now)` | 严格读取：未注册/未发布/尚不可用/过期分别报错 |
+| `[msg, status] = bus.tryRead(name, now)` | 非抛出式读取，`status` 为 `ok`/`unknown_topic`/`missing`/`not_available`/`stale` |
+| `msg = bus.latest(name)` | 最近一次发布（不做时间门限，供日志/检查） |
+| `bus.topicNames()` / `bus.getSpec(name)` / `bus.sequence()` | 注册列表、契约与全局发布序号 |
+
+契约由 `aero_topic_spec(fields, dimensions, units, options)` 构造，声明字段名、尺寸、单位、
+是否允许真值（`allow_ground_truth`）与最大消息年龄（`max_age_s`）。
+
+### 14.2 消息结构
+
+```text
+message.name               Topic 名称
+message.data               载荷结构体（字段与契约一致）
+message.sample_time_s      采样/来源时刻
+message.available_time_s   对订阅者可用的时刻（≥ sample_time_s）
+message.sequence           全局发布顺序
+message.topic_sequence     该 Topic 的独立版本号
+message.source             可选的来源标识
+```
+
+### 14.3 规则
+
+- **Latest-Value**：每个 Topic 只保存最新值，不建历史队列。
+- **时间**：同一 Topic 的 `sample_time_s` 不得倒退；相等允许，后者覆盖并递增序号。
+  同一时刻连续发布的最终值确定（最后发布者胜出）。
+- **可用性**：`read` 在 `now < available_time_s` 时返回 `not_available`，不泄露"未来"数据。
+- **过期**：契约 `max_age_s` 有限时，`now - sample_time_s` 超过即 `stale`。
+- **契约校验**：载荷必须是标量结构体，字段集合与契约一致，数值实数、尺寸匹配、全部有限；
+  单位只声明不换算。
+- **真值隔离**：普通 Topic 不允许承载真值；只有以 `truth/` 开头且声明 `allow_ground_truth=true`
+  的 Topic 才能发布真值；普通 GNC Topic 命中真值标志时直接报错。
+- **无自有时间/调度**：总线不创建 Timer、线程、网络或文件 I/O；时间由 Simulation 传入。
+
+### 14.4 已知限制
+
+1. 仅 Latest-Value；未来 ECL 等需要逐样本消费的高频数据需另行设计，不在本轮。
+2. 尚未接入 `aero_sim`；接入时必须由 Simulation 持有唯一实例，禁止第二套并行 Bus，
+   且不得改变 `command` / `held_command` 的独立锁存语义。
+3. 契约只校验结构、尺寸与有限性，不校验物理合理性（量程、单位换算由模块负责）。
