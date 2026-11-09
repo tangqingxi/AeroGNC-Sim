@@ -166,7 +166,7 @@ B_acc = J_frd⁻¹ · B_tau
   三者不得混用。`B_M` 可由几何导出：第 i 列 = `diag([l1,l1,l2])⁻¹ (r_i × f_i)`，
   其中正偏角气动合力方向 `f_i = [-sinφ_i; cosφ_i; 0]`。
 - 旋翼正转：绕 +Z 右手正向，推力沿 −Z，空气动力反扭矩沿 −Z；固定片反扭矩反向补偿。
-- 舵机：KST X08H，8 V，机械行程约 ±40°，实机 PWM 更新率 200 Hz。
+- 舵机：KST X08H，8 V，装配行程约 ±40°（可配置为非对称上下界），实机 PWM 更新率 200 Hz。
 - 舵面真实偏角、旋翼真实转速是连续状态，由通用动力学推进；目标指令是锁存输入。
 
 ## 10. 参数归属、单位与可信等级
@@ -176,7 +176,7 @@ B_acc = J_frd⁻¹ · B_tau
 | 质量、惯量 | kg、kg·m² | Aircraft 装配 | 参考值，未辨识 |
 | 力臂、方位角 | m、rad | Aircraft 装配 | 实机定义 |
 | 舵机设备能力 `range_rad` | rad | 设备型号（KST 未声明，取 `[-Inf, Inf]`） | 未声明 |
-| 舵面装配行程 ±40° | rad | Aircraft 装配 `servo_deflection_limit_rad` | 实机定义 |
+| 舵面装配行程 [lower upper] | rad | Aircraft 装配 `servo_deflection_limit_rad`（可非对称） | 实机定义 |
 | **生效行程** = 能力 ∩ 装配 | rad | Aircraft 计算一次 `servo_effective_range_rad`，作为唯一 `range_rad` 传给通用动力学 | 唯一权威 |
 | `B_M` | — | Aircraft 几何 | 实机接线与几何 |
 | 涵道/机翼系数 | SI | Aircraft 气动数据 | **外部数据，许可待确认** |
@@ -208,14 +208,82 @@ B_acc = J_frd⁻¹ · B_tau
 - Servo/Motor 通用一阶动力学（含 `model_type` 校验、速率/行程/转速限幅、停机与启动语义）
   与两个设备型号参数。
 - SHC09 20 状态非线性六自由度模型：刚体、涵道、机翼、六舵面、陀螺、反扭矩、风扰。
-- 悬停配平（不依赖气动表）、几何/效能/动力学/执行器/停机状态/指令独立性/输出语义/元数据/集成测试。
+- 悬停配平（不依赖气动表，检查非对称生效行程上下界）、几何/效能/动力学/执行器/停机状态/
+  指令独立性/输出语义/元数据/集成/目录治理测试，共 23 项。
 
 **未实现 / 依赖外部条件**
 
 - SHC09 真实气动系数表：再分发许可未确认，真实表不入库；物理气动验证依赖用户提供数据文件。
+  外部文件默认 `trust='unverified'`，只有显式 `verified` 才允许物理验证；合成系数固定 `synthetic`。
 - Guidance、Navigation、Control、控制分配、场景库、传感器模型。
 - 二阶/辨识/非线性执行器 mode。
 - 实机参数辨识（惯量、舵机 τ/速率、电机 τ/转速范围仍为参考值或名义值）。
 
 **结论边界**：本轮验证的是“方程实现、坐标与符号、数值积分、执行器动态与接口”，
 不是“实机参数精度”。不得把与参考模型一致表述为实机精度认证。
+
+## 13. 当前目录布局与文件归属
+
+```text
+AeroGNC-Sim/
+├── ARCHITECTURE.md   顶层基线（含全项目目录治理条款）
+├── DESIGN.md         本文
+├── AGENTS.md         Agent 协作与代码规范
+├── README.md         用户文档
+├── aero_setup.m      生产路径登记（不加载 tests）
+├── src/
+│   ├── Simulation/
+│   │   ├── aero_sim.m             运行入口
+│   │   ├── aero_integrate.m       连续积分（单文件，不另建目录）
+│   │   ├── Events/                调度、测量、组件 schema
+│   │   ├── Configuration/         默认配置、配置校验、命令校验
+│   │   ├── Results/               保存、容量、路径安全
+│   │   └── Internal/              环境信息、项目根
+│   ├── Aircraft/SHC09/
+│   │   ├── shc09_model.m          装配入口
+│   │   ├── shc09_parameters.m     唯一参数来源
+│   │   ├── shc09_dynamics.m       六自由度方程
+│   │   ├── shc09_outputs.m        标准输出
+│   │   ├── shc09_hover_equilibrium.m 悬停平衡点
+│   │   ├── Aerodynamics/          涵道、机翼、舵面、系数表、力/力矩合成
+│   │   └── Internal/              状态布局、投影、四元数、元数据、命令解析
+│   └── Components/Actuators/{Servo,Motor}/
+│       ├── aero_*_dynamics.m      通用动力学（不绑定品牌）
+│       └── +<Class>Devices/+<MODEL>/parameters.m
+├── tests/
+│   ├── run_tests.m                唯一入口（登记表与磁盘一致性检查）
+│   ├── helpers/                   断言与测试辅助
+│   ├── fixtures/                  测试替身（生产路径不加载）
+│   ├── Simulation/{Core,Events,Results}/
+│   ├── Aircraft/SHC09/
+│   └── test_project_layout.m      目录、入口、重复定义检查
+├── examples/
+└── results/                       gitignore
+```
+
+### 13.1 新文件放置决策
+
+| 新内容 | 放置位置 |
+|---|---|
+| 运行级能力（时钟、调度、积分） | `src/Simulation/` 或其职责子目录 |
+| 新配置项/校验规则 | `src/Simulation/Configuration/` |
+| 结果存储/容量/路径逻辑 | `src/Simulation/Results/` |
+| 新机型 | `src/Aircraft/<TYPE>/`：入口、参数、动力学、输出放根，物理子目录按领域 |
+| 机型内部辅助（状态索引、投影、元数据） | `src/Aircraft/<TYPE>/Internal/` |
+| 新设备型号 | `src/Components/Actuators/<Class>/+<Class>Devices/+<MODEL>/parameters.m` |
+| 新设备动力学类别 | `src/Components/Actuators/<Class>/` 下的通用函数 |
+| 新测试 | `tests/Simulation/{Core,Events,Results}/` 或 `tests/Aircraft/<TYPE>/` |
+| 测试替身 | `tests/fixtures/` |
+
+### 13.2 依赖方向
+
+`Aircraft → Components + Simulation 接口`；`Components` 不依赖 `Aircraft`；
+`Simulation` 不依赖 `Aircraft`/`Components`；`tests` 可依赖全部；`examples` 只依赖生产代码。
+
+### 13.3 新增或移动文件后的自检
+
+- `aero_setup.m` 是否登记新目录（禁止 `genpath`，不登记 tests）；
+- `run_tests.m` 的登记表是否与磁盘 `test_*.m` 一致；
+- `which -all` 是否仍唯一，旧名称是否已不可解析；
+- 是否产生重复实现、空目录或按轮次命名的目录；
+- README/DESIGN/AGENTS 是否同步。

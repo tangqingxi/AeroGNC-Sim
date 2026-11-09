@@ -69,7 +69,7 @@ SHC09 示例读取环境变量 `AEROGNC_SHC09_AERO_FILE`（或传入数据文件
 matlab -batch "run('tests/run_tests.m')"
 ```
 
-覆盖内核 14 项 + SHC09/Components/接口 8 项，共 22 项。SHC09 气动的
+覆盖内核 14 项 + SHC09/Components/接口/目录治理 9 项，共 23 项。SHC09 气动的
 **物理验证依赖外部数据**：结构测试使用 `tests/fixtures/shc09_aero_fixture.m` 中
 明确标注的合成系数（全零气动表），只验证代码通路、符号与积分，不代表气动性能。
 
