@@ -5,7 +5,7 @@
 ## 1. 权威顺序
 
 1. 用户当轮的明确指令。
-2. `ARCHITECTURE.md`（Architecture Baseline v0.1 冻结决策；V1.0 发布范围见其 §13）。
+2. `ARCHITECTURE.md`（Architecture Baseline v0.1 冻结决策；V1.0 完成状态与发布条件见其 §13）。
 3. 本文件的协作与代码规范。
 4. AUDIT 仓库中的最新阶段报告与 `HANDOFF.md`。
 

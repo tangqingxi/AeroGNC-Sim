@@ -42,7 +42,7 @@ for k = 1:numel(legacyFunctions)
         '旧接口 %s 仍可解析', legacyFunctions{k});
 end
 
-legacyPatterns = {'bus\.measurements', 'aero_measurement', 'is_physical'};
+legacyPatterns = {'bus\.measurements', 'aero_measurement', 'is_physical', 'bus\.truth'};
 sourceFiles = dir(fullfile(root, 'src', '**', '*.m'));
 for k = 1:numel(sourceFiles)
     text = fileread(fullfile(sourceFiles(k).folder, sourceFiles(k).name));

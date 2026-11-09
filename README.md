@@ -1,6 +1,7 @@
 # AeroGNC-Sim
 
-> **版本**：V1.0（Foundation）——仿真内核、SHC09 机型、通用执行器与统一 Topic Bus。
+> **版本状态**：面向 V1.0 开发中；Foundation（仿真内核、SHC09 机型、通用执行器、统一 Topic Bus）
+> 已完成，基础 GNC 与场景尚未完成。尚未发布 `v1.0.0`。
 
 模块化 MATLAB GNC 科研仿真平台。用户通过选择机型（Aircraft）、设备型号（Components）、
 制导/导航/控制算法与场景来搭建仿真，统一由 Simulation 内核运行。SHC09 涵道式尾座无人机

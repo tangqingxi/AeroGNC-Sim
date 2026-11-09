@@ -97,5 +97,7 @@ bus.held_command.motor = bus.command.motor;
 end
 
 function bus = guard_truth(bus)
-check_that(isempty(bus.truth), '周期组件读取到了真实状态（bus.truth 非空）');
+forbidden = {'truth', 'x', 'state', 'true_state', 'x_true'};
+extra = intersect(fieldnames(bus), forbidden);
+check_that(isempty(extra), '周期组件输入含真实状态字段：%s', strjoin(extra, ', '));
 end

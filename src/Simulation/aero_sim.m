@@ -16,8 +16,9 @@ function result = aero_sim(model, cfg)
 %   （零阶保持）；ode45 的内部步点只用于积分，不作为采样点或日志时刻。
 %
 % 真值隔离：
-%   连续状态只通过 sensor 组件的 sample(t,x) 读取；periodic 组件永远拿不到
-%   真值（bus.truth 恒为空）。内核记录真值仅用于验证与日志。
+%   连续状态只通过 sensor 组件的 sample(t,x) 读取；periodic 组件收到的 bus
+%   只含锁存命令与 Topic Bus，不含任何真实状态字段。
+%   内核记录真值仅用于验证与日志。
 %
 % 通信（V1.0 始终启用）：
 %   aero_sim 创建唯一 aero_topic_bus 并作为 bus.topics 提供给组件；sensor 在
@@ -64,7 +65,6 @@ measurementLog = cell(nPublishes, 1);
 bus = struct();
 bus.command = cfg.initial_command;       % 控制计算值（锁存边界）
 bus.held_command = cfg.initial_command;  % 真正进入动力学的锁存值
-bus.truth = [];                          % 恒为空：周期组件不得读取真值
 
 % ---- 3b. 通信总线（V1.0 唯一实例，始终启用） -------------------------
 comm = aero_communication_setup(cfg.communication);

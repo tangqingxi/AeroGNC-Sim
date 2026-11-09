@@ -354,10 +354,10 @@ message.source             可选的来源标识
   `command_topic` / `held_command_topic`（数值命令打包为 `struct('value', cmd(:))`，
   结构体命令原样发布）。两者 Topic 分离，锁存频率与计算频率可以不同，原有锁存逻辑不变；
   GNC 模块之间应通过 Topic 交换参考/估计/指令，不得把 `bus.command` 当作通用数据通道。
-- `result.measurements` 是测量的**唯一权威记录**（内核在发布事件追加）；`result.communication`
-  是**普通值快照**（`aero-comm-snapshot/1`：Topic 列表、发布计数、每个 Topic 最后一条消息、
-  可选日志），**不保存 Bus 句柄**，可直接 `save/load`。Topic 日志只是有界分析副本，
-  不作为第二份权威数据。
+- `result.measurements` 是测量的**唯一权威记录**（内核在发布事件追加，随仿真时间增长，
+  不设 `max_records` 上限）；`result.communication` 是**普通值快照**（`aero-comm-snapshot/1`：
+  Topic 列表、发布计数、每个 Topic 最后一条消息、可选日志），**不保存 Bus 句柄**，可直接 `save/load`。
+  Topic 日志只是有界分析副本（受 `max_records` 限制），不作为第二份权威数据。
 - 可选日志：`cfg.communication.log = struct('enabled',false,'topics',{{}},'max_records',10000)`；
   只记录所选 Topic 的**实际发布**（名称/载荷/采样时间/可用时间/全局与 Topic 序号），
   超过 `max_records` 的发布计入 `dropped` 而不增长；拒绝真值 Topic；开关日志不改变轨迹与时序。

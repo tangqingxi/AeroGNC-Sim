@@ -176,7 +176,9 @@ bus.held_command = bus.command;
 end
 
 function bus = guard_step(t, bus, capture)
-check_that(isempty(bus.truth), '周期组件读取到真实状态（bus.truth 非空）');
+forbidden = {'truth', 'x', 'state', 'true_state', 'x_true'};
+extra = intersect(fieldnames(bus), forbidden);
+check_that(isempty(extra), '周期组件输入含真实状态字段：%s', strjoin(extra, ', '));
 if ~isKey(capture, 'bus')
     capture('bus') = bus.topics;   % 仅用于测试后检查，不进入结果
 end
