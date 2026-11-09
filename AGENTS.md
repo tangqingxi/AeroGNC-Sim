@@ -113,7 +113,7 @@
 
 ```text
 python ~/.dsh/skills/dual-repo-agent-handoff/scripts/build_manifest.py <audit> --phase <阶段名> \
-  --dev-repo <DEV URL> --dev-branch main --dev-commit <SHA> --audit-repo <AUDIT URL> \
+  --dev-repo <DEV URL> --dev-branch <BRANCH> --dev-commit <SHA> --audit-repo <AUDIT URL> \
   --status in-progress --evidence <相对路径...> --output <阶段>/evidence-manifest.json
 python ~/.dsh/skills/dual-repo-agent-handoff/scripts/verify_evidence.py <audit> <阶段>/evidence-manifest.json
 python ~/.dsh/skills/dual-repo-agent-handoff/scripts/check_handoff.py --phase <阶段名> <DEV> <AUDIT>

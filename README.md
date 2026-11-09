@@ -19,6 +19,8 @@
   内核同时兼容原有数值命令，并在运行期校验非法命令。
 - SHC09 悬停配平（不依赖气动表）；执行器与实际状态均为连续状态；停止指令允许真实零转速。
 - 结果记录模型元数据（版本、质量、惯量、设备型号、生效参数、覆盖值与气动数据 SHA256）。
+- 通信：可选 Latest-Value Topic Bus（`cfg.communication`，默认关闭）；Sensor 在测量可用时刻发布，
+  计算命令与锁存命令使用独立 Topic，结果保存普通值快照，可选有界发布日志（仅分析用）。
 
 ## 环境要求
 
@@ -69,7 +71,7 @@ SHC09 示例读取环境变量 `AEROGNC_SHC09_AERO_FILE`（或传入数据文件
 matlab -batch "run('tests/run_tests.m')"
 ```
 
-覆盖内核 14 项 + SHC09/Components/接口/目录治理 9 项，共 23 项。SHC09 气动的
+覆盖内核 14 项 + SHC09/Components/接口/目录治理 9 项 + Communication 4 项，共 27 项。SHC09 气动的
 **物理验证依赖外部数据**：结构测试使用 `tests/fixtures/shc09_aero_fixture.m` 中
 明确标注的合成系数（全零气动表），只验证代码通路、符号与积分，不代表气动性能。
 

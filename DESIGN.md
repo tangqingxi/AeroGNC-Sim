@@ -353,7 +353,7 @@ message.source             可选的来源标识
 - 命令：内核在 `bus.command` / `bus.held_command` **发生变化**时分别发布到
   `command_topic` / `held_command_topic`（数值命令打包为 `struct('value', cmd(:))`，
   结构体命令原样发布）。两者 Topic 分离，锁存频率与计算频率可以不同，原有锁存逻辑不变。
-- 启用时 `result.communication` 是**普通值快照**（`aero-communication-snapshot/1`，由
+- 启用时 `result.communication` 是**普通值快照**（`aero-comm-snapshot/1`，由
   `aero_communication_snapshot` 生成）：Topic 列表、发布计数、每个 Topic 最后一条消息与日志快照；
   **不保存 Bus 句柄**，可直接 `save/load`。关闭时该字段不存在，旧结果结构保持不变。
 - 可选日志：`cfg.communication.log = struct('enabled',false,'topics',{{}},'max_records',10000)`；
