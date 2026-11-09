@@ -1,5 +1,7 @@
 # AeroGNC-Sim
 
+> **版本**：V1.0（Foundation）——仿真内核、SHC09 机型、通用执行器与统一 Topic Bus。
+
 模块化 MATLAB GNC 科研仿真平台。用户通过选择机型（Aircraft）、设备型号（Components）、
 制导/导航/控制算法与场景来搭建仿真，统一由 Simulation 内核运行。SHC09 涵道式尾座无人机
 是首个完整机型实例，但平台不绑定 SHC09。
@@ -19,7 +21,7 @@
   内核同时兼容原有数值命令，并在运行期校验非法命令。
 - SHC09 悬停配平（不依赖气动表）；执行器与实际状态均为连续状态；停止指令允许真实零转速。
 - 结果记录模型元数据（版本、质量、惯量、设备型号、生效参数、覆盖值与气动数据 SHA256）。
-- 通信：可选 Latest-Value Topic Bus（`cfg.communication`，默认关闭）；Sensor 在测量可用时刻发布，
+- 通信：V1.0 始终使用单一 Latest-Value Topic Bus；Sensor 在测量可用时刻发布，
   计算命令与锁存命令使用独立 Topic，结果保存普通值快照，可选有界发布日志（仅分析用）。
 
 ## 环境要求
@@ -64,6 +66,12 @@ matlab -batch "run('examples/demo_shc09_open_loop.m')"
 SHC09 示例读取环境变量 `AEROGNC_SHC09_AERO_FILE`（或传入数据文件路径）。数据文件需含
 `duct_raw`（N×4）与 `wing_raw`（M×4）系数表。**气动原始表再分发许可尚未确认，因此不随
 仓库发布**；缺失时示例会打印说明而不伪造数据。
+
+## 通信
+
+V1.0 始终使用单一 Topic Bus。`cfg.communication.topics` 注册 Topic 契约；sensor 必须声明
+`topic`，测量在可用时刻发布；`command_topic` / `held_command_topic` 分别映射计算与锁存命令。
+`result.communication` 是普通值快照（不含 Bus 句柄），可选发布日志默认关闭。
 
 ## 测试
 

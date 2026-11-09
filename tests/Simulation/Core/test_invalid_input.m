@@ -6,6 +6,8 @@ base = aero_default_config();
 base.tspan = [0, 0.1];
 base.x0 = 0;
 base.initial_command = 0;
+base.communication.topics = {struct('name', 'sensor/c', ...
+    'spec', aero_topic_spec({'value', 'sample_time_s'}, {[1 1], [1 1]}, {'-', 's'}))};
 
 bad = base;
 bad.tspan = [1, 0];
@@ -38,14 +40,19 @@ check_error(@() aero_sim(model, bad), 'aero:config:offset', 'offset >= period');
 bad.components = struct('name', 'c', 'kind', 'bogus', 'period', 0.1, 'step', @noop);
 check_error(@() aero_sim(model, bad), 'aero:config:kind', 'unknown kind');
 
-bad.components = struct('name', 'c', 'kind', 'sensor', 'period', 0.1);
+bad.components = struct('name', 'c', 'kind', 'sensor', 'period', 0.1, ...
+    'topic', 'sensor/c');
 check_error(@() aero_sim(model, bad), 'aero:config:callback', 'sensor without sample');
+
+bad.components = struct('name', 'c', 'kind', 'sensor', 'period', 0.1, ...
+    'sample', @sample_ok);
+check_error(@() aero_sim(model, bad), 'aero:config:topic', 'sensor without topic');
 
 bad.components = struct('name', 'c', 'kind', 'periodic', 'period', 0.1);
 check_error(@() aero_sim(model, bad), 'aero:config:callback', 'periodic without step');
 
 bad.components = struct('name', 'c', 'kind', 'sensor', 'period', 0.1, ...
-    'delay', -1, 'sample', @sample_ok);
+    'delay', -1, 'topic', 'sensor/c', 'sample', @sample_ok);
 check_error(@() aero_sim(model, bad), 'aero:config:delay', 'negative delay');
 
 bad.components = struct('name', {'c', 'c'}, 'kind', 'periodic', ...
@@ -59,11 +66,11 @@ check_error(@() aero_sim(model, bad), 'aero:kernel:latch', 'latch without permis
 
 bad = base;
 bad.components = struct('name', 'c', 'kind', 'sensor', 'period', 0.05, ...
-    'sample', @sample_nan);
+    'topic', 'sensor/c', 'sample', @sample_nan);
 check_error(@() aero_sim(model, bad), 'aero:kernel:sample', 'non-finite sensor value');
 
 info = struct('passed', true, 'summary', ...
-    '14 invalid inputs rejected with aero:* identifiers, no silent repair');
+    '15 invalid inputs rejected with aero:* identifiers, no silent repair');
 
 end
 

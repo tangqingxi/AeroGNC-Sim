@@ -81,19 +81,15 @@ if save.enabled && isempty(save.path)
 end
 cfg.save = save;
 
-% ---- 通信配置 ---------------------------------------------------------
+% ---- 通信配置（V1.0 始终启用，不存在关闭模式） ------------------------
 comm = cfg.communication;
 if ~isstruct(comm) || ~isscalar(comm)
     error('aero:config:communication', 'communication 必须是标量结构体');
 end
-if ~isfield(comm, 'enabled') || isempty(comm.enabled)
-    comm.enabled = false;
+if isfield(comm, 'enabled')
+    error('aero:config:communication', ...
+        'communication.enabled 已移除：V1.0 始终使用唯一 Topic Bus');
 end
-if ~isscalar(comm.enabled) ...
-        || ~(islogical(comm.enabled) || isnumeric(comm.enabled))
-    error('aero:config:communication', 'communication.enabled 必须是逻辑标量');
-end
-comm.enabled = logical(comm.enabled);
 if ~isfield(comm, 'topics')
     comm.topics = {};
 end
@@ -232,7 +228,12 @@ for i = 1:n
     if isfield(entry, 'topic') && ~isempty(entry.topic)
         topic = char(entry.topic);
     end
-    if ~strcmp(kind, 'sensor') && ~isempty(topic)
+    if strcmp(kind, 'sensor')
+        if isempty(topic)
+            error('aero:config:topic', ...
+                '传感器 "%s" 必须声明 topic：V1.0 的测量统一经 Topic Bus 传递', name);
+        end
+    elseif ~isempty(topic)
         error('aero:config:topic', ...
             '组件 "%s" 是 periodic，只有 sensor 可以声明 topic（命令 Topic 由通信配置统一发布）', name);
     end

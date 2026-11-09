@@ -210,8 +210,8 @@ B_acc = J_frd⁻¹ · B_tau
 - SHC09 20 状态非线性六自由度模型：刚体、涵道、机翼、六舵面、陀螺、反扭矩、风扰。
 - 悬停配平（不依赖气动表，检查非对称生效行程上下界）、几何/效能/动力学/执行器/停机状态/
   指令独立性/输出语义/元数据/集成/目录治理测试，共 23 项。
-- Communication-Core：Latest-Value Topic Bus（注册、发布、读取、契约校验、可用/过期/时间倒退处理、
-  真值隔离）并已接入 `aero_sim`（可选，默认关闭）；结果快照、发布日志与边界校验已补齐；全项目共 27 项测试。
+- Communication：Latest-Value Topic Bus（注册、发布、读取、契约校验、可用/过期/时间倒退处理、
+  真值隔离），V1.0 始终启用；结果快照、有界发布日志与边界校验已补齐；全项目共 27 项测试。
 
 **未实现 / 依赖外部条件**
 
@@ -292,10 +292,10 @@ AeroGNC-Sim/
 - 是否产生重复实现、空目录或按轮次命名的目录；
 - README/DESIGN/AGENTS 是否同步。
 
-## 14. Communication Topic Bus（Communication-Core）
+## 14. Communication Topic Bus（V1.0）
 
 定位：Guidance / Navigation / Control 等模块通过 Topic 名称交换数据，不读取彼此内部状态。
-本轮只交付通信核心与单元测试，**尚未接入 `aero_sim`**；接入属于 Communication-Integration。
+V1.0 中 Bus 由 `aero_sim` 创建并始终启用，是唯一的运行时通信状态。
 
 ### 14.1 接口
 
@@ -341,21 +341,23 @@ message.source             可选的来源标识
   测试适配器读取，生产 GNC 不得读取真值。
 - **无自有时间/调度**：总线不创建 Timer、线程、网络或文件 I/O；时间由 Simulation 传入。
 
-### 14.5 与 `aero_sim` 的集成（Communication-Integration）
+### 14.5 与 `aero_sim` 的集成（V1.0 单一 Bus）
 
-- `cfg.communication.enabled=true` 时，`aero_sim` 创建并持有**唯一** `aero_topic_bus`，作为
-  `bus.topics` 提供给组件；默认关闭，关闭时不创建 Bus、结果结构不变。
+- `aero_sim` 始终创建并持有**唯一** `aero_topic_bus`，作为 `bus.topics` 提供给组件；
+  不存在 `communication.enabled` 关闭模式，也不维护第二套消息状态。
 - Topic 由 `cfg.communication.topics`（cell of `struct('name',…,'spec',…)`）显式注册；
   `command_topic` 与 `held_command_topic` 必须指向已注册 Topic。
-- Sensor：组件新增可选 `topic` 字段；在**发布事件**（测量真正可用）时发布
+- Sensor：`topic` 为必填字段；在**发布事件**（测量真正可用）时发布
   `struct('value', v(:), 'sample_time_s', sampleTime)`，`available_time` 等于当前事件时刻，
-  因此不会提前发布未来样本。
+  因此不会提前发布未来样本。运行时不再有 `bus.measurements` 共享数组。
 - 命令：内核在 `bus.command` / `bus.held_command` **发生变化**时分别发布到
   `command_topic` / `held_command_topic`（数值命令打包为 `struct('value', cmd(:))`，
-  结构体命令原样发布）。两者 Topic 分离，锁存频率与计算频率可以不同，原有锁存逻辑不变。
-- 启用时 `result.communication` 是**普通值快照**（`aero-comm-snapshot/1`，由
-  `aero_communication_snapshot` 生成）：Topic 列表、发布计数、每个 Topic 最后一条消息与日志快照；
-  **不保存 Bus 句柄**，可直接 `save/load`。关闭时该字段不存在，旧结果结构保持不变。
+  结构体命令原样发布）。两者 Topic 分离，锁存频率与计算频率可以不同，原有锁存逻辑不变；
+  GNC 模块之间应通过 Topic 交换参考/估计/指令，不得把 `bus.command` 当作通用数据通道。
+- `result.measurements` 是测量的**唯一权威记录**（内核在发布事件追加）；`result.communication`
+  是**普通值快照**（`aero-comm-snapshot/1`：Topic 列表、发布计数、每个 Topic 最后一条消息、
+  可选日志），**不保存 Bus 句柄**，可直接 `save/load`。Topic 日志只是有界分析副本，
+  不作为第二份权威数据。
 - 可选日志：`cfg.communication.log = struct('enabled',false,'topics',{{}},'max_records',10000)`；
   只记录所选 Topic 的**实际发布**（名称/载荷/采样时间/可用时间/全局与 Topic 序号），
   超过 `max_records` 的发布计入 `dropped` 而不增长；拒绝真值 Topic；开关日志不改变轨迹与时序。
@@ -370,3 +372,4 @@ message.source             可选的来源标识
 3. 契约只校验结构、尺寸与有限性，不校验物理合理性（量程、单位换算由模块负责）。
 4. `truth/` 前缀不是权限系统；真实隔离依赖 Simulation 的数据边界与模块纪律。
 5. 仅在 MATLAB R2025b 下验证了快照 `.mat` 保存/加载；不承诺跨 MATLAB 版本兼容。
+6. 传感器采样必须有 Topic 契约；V1.0 不支持“无 Topic 的旁路测量”。

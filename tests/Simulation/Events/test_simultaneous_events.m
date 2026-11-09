@@ -7,12 +7,20 @@ cfg.tspan = [0, 0.35];
 cfg.x0 = 0;
 cfg.initial_command = 0;
 
+stateSpec = aero_topic_spec({'value', 'sample_time_s'}, {[1 1], [1 1]}, {'-', 's'});
+valueSpec = aero_topic_spec({'value'}, {[1 1]}, {'-'});
+cfg.communication.topics = { ...
+    struct('name', 'sensor/truth', 'spec', stateSpec), ...
+    struct('name', 'nav/state', 'spec', valueSpec), ...
+    struct('name', 'guidance/ref', 'spec', valueSpec)};
+
 cfg.components = struct( ...
     'name', {'truth', 'nav', 'guidance', 'control', 'latch'}, ...
     'kind', {'sensor', 'periodic', 'periodic', 'periodic', 'periodic'}, ...
     'period', {0.1, 0.1, 0.1, 0.1, 0.1}, ...
     'priority', {10, 20, 30, 40, 50}, ...
     'latches', {false, false, false, false, true}, ...
+    'topic', {'sensor/truth', '', '', '', ''}, ...
     'sample', {@truth_sample, [], [], [], []}, ...
     'step', {[], @nav_step, @guidance_step, @control_step, @latch_step});
 
@@ -57,26 +65,25 @@ function v = truth_sample(t, x) %#ok<INUSD>
 v = x(1);
 end
 
-function bus = nav_step(t, bus) %#ok<INUSD>
-m = aero_measurement(bus, 'truth');
-if isempty(m)
-    bus.nav = [];
-else
-    bus.nav = m.value;
+function bus = nav_step(t, bus)
+[msg, status] = bus.topics.tryRead('sensor/truth', t);
+if strcmp(status, 'ok')
+    bus.topics.publish('nav/state', struct('value', msg.data.value), t, t, t, 'nav');
 end
 end
 
-function bus = guidance_step(t, bus) %#ok<INUSD>
-if isfield(bus, 'nav') && ~isempty(bus.nav)
-    bus.guidance = bus.nav + 1;
-else
-    bus.guidance = [];
+function bus = guidance_step(t, bus)
+[msg, status] = bus.topics.tryRead('nav/state', t);
+if strcmp(status, 'ok')
+    bus.topics.publish('guidance/ref', struct('value', msg.data.value + 1), ...
+        t, t, t, 'guidance');
 end
 end
 
-function bus = control_step(t, bus) %#ok<INUSD>
-if isfield(bus, 'guidance') && ~isempty(bus.guidance)
-    bus.command = 2 * bus.guidance;
+function bus = control_step(t, bus)
+[msg, status] = bus.topics.tryRead('guidance/ref', t);
+if strcmp(status, 'ok')
+    bus.command = 2 * msg.data.value;
 else
     bus.command = 0;
 end

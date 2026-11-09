@@ -7,7 +7,6 @@ model = probe_model();
 result = aero_sim(model, cfg);
 snap = result.communication;
 
-check_that(snap.enabled, '快照未标记启用');
 check_that(~isfield(snap, 'bus'), '快照仍包含 Bus 句柄');
 check_that(strcmp(snap.schema, 'aero-comm-snapshot/1'), '快照 schema 错误');
 check_that(numel(snap.messages) == numel(snap.topic_names), '消息数量与 Topic 数不一致');
@@ -110,10 +109,10 @@ replaced.components(end + 1) = evil;
 check_error(@() aero_sim(probe_model(), replaced), 'aero:comm:busReplaced', ...
     '运行时替换唯一总线');
 
-% ---- 5. 旧兼容接口仍保留 --------------------------------------------
-check_that(~isempty(resOn.measurements), 'bus.measurements 兼容记录缺失');
+% ---- 5. 结果测量记录是唯一权威格式 --------------------------------
+check_that(~isempty(resOn.measurements), 'result.measurements 记录缺失');
 check_that(isfield(resOn.measurements{1}, 'available_time'), ...
-    '兼容测量缺少 available_time');
+    '测量记录缺少 available_time');
 
 info = struct('passed', true, 'summary', sprintf( ...
     '快照可保存/加载；日志 %d 条与实际发布一致且不改变轨迹；容量/真值/冲突/唯一性检查通过', ...
@@ -137,7 +136,6 @@ cfg.tspan = [0, tspan];
 cfg.x0 = 0;
 cfg.initial_command = 0;
 cfg.solver = struct('RelTol', 1e-8, 'AbsTol', 1e-10, 'MaxStep', Inf, 'InitialStep', []);
-cfg.communication.enabled = true;
 cfg.communication.topics = { ...
     struct('name', 'sensor/baro', 'spec', sensorSpec), ...
     struct('name', 'command/computed', 'spec', valueSpec), ...

@@ -5,7 +5,7 @@
 ## 1. 权威顺序
 
 1. 用户当轮的明确指令。
-2. `ARCHITECTURE.md`（Architecture Baseline v0.1，第 2 节冻结决策不得静默改变）。
+2. `ARCHITECTURE.md`（Architecture Baseline v0.1 冻结决策；V1.0 发布范围见其 §13）。
 3. 本文件的协作与代码规范。
 4. AUDIT 仓库中的最新阶段报告与 `HANDOFF.md`。
 
@@ -61,8 +61,8 @@
 - MATLAB 路径由根目录 `aero_setup.m` **显式**登记，禁止对整个仓库递归 `addpath`。
 - 新增机型/设备后，平台仍须保持多机型、多设备通用：`Simulation` 不得识别机型或设备字段名，
   通用执行器动力学不得出现品牌判断，设备型号参数不得包含机型装配信息。
-- 通信：Topic Bus 只做 Latest-Value 传递，不实现时钟或调度；由 Simulation 持有唯一实例，
-  禁止建立第二套并行 Bus；普通 Topic 不得承载 GroundTruth。
+- 通信：V1.0 始终启用唯一 Topic Bus，只做 Latest-Value 传递，不实现时钟或调度；
+  Simulation 持有唯一实例，禁止建立第二套并行 Bus；普通 Topic 不得承载 GroundTruth。
 
 ### 5.2 可读性
 
@@ -126,3 +126,13 @@ python ~/.dsh/skills/dual-repo-agent-handoff/scripts/check_handoff.py --phase <�
 - 在 AUDIT 放置可执行源码；把旧工程（如 `Ducted-Fan-SHC09-matlab`）代码直接搬入本仓库。
 - 为了让测试通过而放宽既有数值阈值、删除失败测试或伪造跳过状态。
 - 未获授权时创建远端仓库、修改可见性、合并分支、删除数据或扩大任务范围。
+
+## 10. 版本与分支政策（V1.0）
+
+- `main` 是当前版本的开发主线；所有正式成果最终合并回 `main`。
+- 小型开发分支仅用于隔离一次改动，不长期维护；阶段验收后不再作为维护分支。
+- 合并后核对分支无独有提交、远端与本地一致，再删除临时分支；不删除 `main`、AUDIT 历史或正式 Tag。
+- 正式维护以发布版本为单位；首次 V1.0 发布时在合并后的 `main` 上建立 `v1.0.0` Tag。
+- 暂不创建无实际必要的 release 分支；发布分支仅在确有长期维护需求时另行决策。
+- AUDIT 只保存必要的提交追溯与验证证据，不保存旧代码副本；旧实现以 Git 历史为准。
+- 语义阶段名仍用于任务组织（见 `ARCHITECTURE.md` §9），版本号只用于软件发布，不代替阶段名。

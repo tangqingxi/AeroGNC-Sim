@@ -7,14 +7,13 @@ function aero = shc09_aero_data(source)
 %                 其余列为系数。文件路径由 source.file 指定；为空时读取
 %                 环境变量 AEROGNC_SHC09_AERO_FILE。
 %   source.type = 'fixture' ：直接使用 source.tables 中的样条结构
-%                 （仅用于测试替身，aero.is_physical = false）。
+%                 （仅用于测试替身，trust 固定为 'synthetic'）。
 %
 % 输出 aero：
 %   dt, dn, dm       涵道样条（pp 形式）
 %   wl, wd, wm       机翼样条（pp 形式）
 %   duct_domain_rad  涵道迎角有效域
 %   wing_domain_rad  机翼迎角有效域
-%   is_physical      已废弃；改用 trust + physical_validation_allowed
 %   trust            外部数据默认 'unverified'，调用方显式声明 'verified'
 %                    （仅表示允许用于物理验证，来源仍需另行核对）；
 %                    fixture 固定为 'synthetic'，永不可用于物理验证
@@ -76,18 +75,12 @@ if ~isfile(file)
 end
 
 data = load(file);
-if isfield(data, 'duct_raw') && isfield(data, 'wing_raw')
-    duct = double(data.duct_raw);
-    wing = double(data.wing_raw);
-elseif isfield(data, 'aero')
-    aero = data.aero;
-    aero.source_type = 'external';
-    aero.source_file = file;
-    return;
-else
+if ~isfield(data, 'duct_raw') || ~isfield(data, 'wing_raw')
     error('shc09:aero:dataFormat', ...
-        '文件 %s 必须包含 duct_raw 与 wing_raw（或预构建的 aero 结构）', file);
+        '文件 %s 必须包含 duct_raw 与 wing_raw', file);
 end
+duct = double(data.duct_raw);
+wing = double(data.wing_raw);
 
 aero = struct();
 aero.dt = make_spline(duct, 'duct_raw');

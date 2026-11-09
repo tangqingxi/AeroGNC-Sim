@@ -19,10 +19,10 @@ function result = aero_sim(model, cfg)
 %   连续状态只通过 sensor 组件的 sample(t,x) 读取；periodic 组件永远拿不到
 %   真值（bus.truth 恒为空）。内核记录真值仅用于验证与日志。
 %
-% 通信（可选，默认关闭）：
-%   cfg.communication.enabled=true 时创建唯一 aero_topic_bus 并作为 bus.topics
-%   提供给组件；sensor 在测量可用事件发布 Topic，计算结果与锁存结果分别发布到
-%   command_topic / held_command_topic。关闭时行为与旧版完全一致。
+% 通信（V1.0 始终启用）：
+%   aero_sim 创建唯一 aero_topic_bus 并作为 bus.topics 提供给组件；sensor 在
+%   测量可用事件发布 Topic，计算结果与锁存结果分别发布到 command_topic /
+%   held_command_topic。测量只经 Topic 传递，不再使用运行时共享数组。
 %
 % 参见 aero_default_config, aero_schedule, aero_save_result。
 
@@ -60,48 +60,46 @@ pending = cell(maxSampleId, 1);          % 已采样但尚未发布的测量
 nPublishes = nnz(strcmp(actions, 'publish'));
 measurementLog = cell(nPublishes, 1);
 
-% 总线：内核保证以下字段存在，其余字段由组件自行读写
+% 总线：内核只保留锁存命令与真值隔离字段；测量统一经 Topic Bus 传递
 bus = struct();
-bus.measurements = {};                   % 已可用测量（按发布时间排序）
-bus.command = cfg.initial_command;       % 控制计算值
+bus.command = cfg.initial_command;       % 控制计算值（锁存边界）
 bus.held_command = cfg.initial_command;  % 真正进入动力学的锁存值
 bus.truth = [];                          % 恒为空：周期组件不得读取真值
 
-% ---- 3b. 通信总线（唯一实例，默认关闭） -------------------------------
+% ---- 3b. 通信总线（V1.0 唯一实例，始终启用） -------------------------
 comm = aero_communication_setup(cfg.communication);
 bus.topics = comm.bus;
 lastCommand = bus.command;
 lastHeld = bus.held_command;
-if comm.enabled
-    sensorTopics = cell(1, 0);
-    for cIdx = 1:numel(cfg.components)
-        topicName = cfg.components(cIdx).topic;
-        if isempty(topicName)
-            continue;
-        end
-        if ~comm.bus.isRegistered(topicName)
-            error('aero:comm:unknownMeasurementTopic', ...
-                '传感器 "%s" 的 topic "%s" 未注册', cfg.components(cIdx).name, topicName);
-        end
-        if any(strcmp(sensorTopics, topicName))
-            error('aero:comm:topicConflict', ...
-                '多个传感器声明了同一 Topic "%s"', topicName);
-        end
-        if strcmp(topicName, comm.command_topic) || strcmp(topicName, comm.held_command_topic)
-            error('aero:comm:topicConflict', ...
-                '传感器 Topic "%s" 与命令 Topic 冲突', topicName);
-        end
-        sensorTopics{end + 1} = topicName; %#ok<AGROW>
+
+sensorTopics = cell(1, 0);
+for cIdx = 1:numel(cfg.components)
+    topicName = cfg.components(cIdx).topic;
+    if isempty(topicName)
+        continue;
     end
-    t0 = cfg.tspan(1);
-    if ~isempty(comm.command_topic)
-        comm.bus.publish(comm.command_topic, aero_command_payload(bus.command), ...
-            t0, t0, t0, 'simulation');
+    if ~comm.bus.isRegistered(topicName)
+        error('aero:comm:unknownMeasurementTopic', ...
+            '传感器 "%s" 的 topic "%s" 未注册', cfg.components(cIdx).name, topicName);
     end
-    if ~isempty(comm.held_command_topic)
-        comm.bus.publish(comm.held_command_topic, aero_command_payload(bus.held_command), ...
-            t0, t0, t0, 'simulation');
+    if any(strcmp(sensorTopics, topicName))
+        error('aero:comm:topicConflict', ...
+            '多个传感器声明了同一 Topic "%s"', topicName);
     end
+    if strcmp(topicName, comm.command_topic) || strcmp(topicName, comm.held_command_topic)
+        error('aero:comm:topicConflict', ...
+            '传感器 Topic "%s" 与命令 Topic 冲突', topicName);
+    end
+    sensorTopics{end + 1} = topicName; %#ok<AGROW>
+end
+t0 = cfg.tspan(1);
+if ~isempty(comm.command_topic)
+    comm.bus.publish(comm.command_topic, aero_command_payload(bus.command), ...
+        t0, t0, t0, 'simulation');
+end
+if ~isempty(comm.held_command_topic)
+    comm.bus.publish(comm.held_command_topic, aero_command_payload(bus.held_command), ...
+        t0, t0, t0, 'simulation');
 end
 
 x = cfg.x0;
@@ -167,15 +165,12 @@ for g = 1:nGroups
             measurement.available_time = t;
             measurementCount = measurementCount + 1;
             measurementLog{measurementCount} = measurement;
-            bus.measurements{end + 1} = measurement; %#ok<AGROW>
-            % 只有到了实际可用时刻才发布到 Topic Bus：
-            % sample_time 保留采样时刻，available_time 等于当前事件时刻。
-            if comm.enabled && ~isempty(component.topic)
-                payload = struct('value', measurement.value(:), ...
-                    'sample_time_s', measurement.sample_time);
-                comm.bus.publish(component.topic, payload, ...
-                    measurement.sample_time, t, t, component.name);
-            end
+            % 测量只通过 Topic Bus 对其他模块可见：sample_time 保留采样时刻，
+            % available_time 等于当前事件时刻（不会提前发布未来数据）。
+            payload = struct('value', measurement.value(:), ...
+                'sample_time_s', measurement.sample_time);
+            comm.bus.publish(component.topic, payload, ...
+                measurement.sample_time, t, t, component.name);
             eventComponent{k} = component.name;
             eventAction{k} = 'publish';
 
@@ -199,12 +194,10 @@ for g = 1:nGroups
                 latchCount = latchCount + 1;
             end
             % 唯一通信实例检查：组件不得删除或替换 bus.topics
-            if comm.enabled
-                if ~isfield(bus, 'topics') || ~isa(bus.topics, 'aero_topic_bus') ...
-                        || bus.topics ~= comm.bus
-                    error('aero:comm:busReplaced', ...
-                        '组件 "%s" 在 t=%.17g 删除或替换了唯一通信总线', component.name, t);
-                end
+            if ~isfield(bus, 'topics') || ~isa(bus.topics, 'aero_topic_bus') ...
+                    || bus.topics ~= comm.bus
+                error('aero:comm:busReplaced', ...
+                    '组件 "%s" 在 t=%.17g 删除或替换了唯一通信总线', component.name, t);
             end
             % 组件更新后立即检查命令值：任意字段名均可，但必须是有限数值结构
             aero_validate_command(bus.command, 'aero:kernel:command', ...
@@ -217,21 +210,19 @@ for g = 1:nGroups
 
         % 计算命令与锁存命令分别映射到独立 Topic；只发布“发生变化”的值，
         % 不改变原有 command / held_command 的锁存语义。
-        if comm.enabled
-            if ~isequaln(bus.command, lastCommand)
-                if ~isempty(comm.command_topic)
-                    comm.bus.publish(comm.command_topic, ...
-                        aero_command_payload(bus.command), t, t, t, 'simulation');
-                end
-                lastCommand = bus.command;
+        if ~isequaln(bus.command, lastCommand)
+            if ~isempty(comm.command_topic)
+                comm.bus.publish(comm.command_topic, ...
+                    aero_command_payload(bus.command), t, t, t, 'simulation');
             end
-            if ~isequaln(bus.held_command, lastHeld)
-                if ~isempty(comm.held_command_topic)
-                    comm.bus.publish(comm.held_command_topic, ...
-                        aero_command_payload(bus.held_command), t, t, t, 'simulation');
-                end
-                lastHeld = bus.held_command;
+            lastCommand = bus.command;
+        end
+        if ~isequaln(bus.held_command, lastHeld)
+            if ~isempty(comm.held_command_topic)
+                comm.bus.publish(comm.held_command_topic, ...
+                    aero_command_payload(bus.held_command), t, t, t, 'simulation');
             end
+            lastHeld = bus.held_command;
         end
     end
 
@@ -279,10 +270,8 @@ result.stats = struct( ...
     'total_internal_points', totalInternalPoints, ...
     'wall_time_s', wallTime);
 
-% 通信启用时把总线转为普通值快照（不含 handle），便于持久化与核查。
-if comm.enabled
-    result.communication = aero_communication_snapshot(comm.bus);
-end
+% V1.0 统一通信：结果始终保存普通值快照（不含 handle），便于持久化与核查。
+result.communication = aero_communication_snapshot(comm.bus);
 
 % ---- 6. 按配置持久化（默认只在内存中返回） ----------------------------
 if cfg.save.enabled

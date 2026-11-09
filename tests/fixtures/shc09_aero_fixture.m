@@ -21,6 +21,5 @@ aero.duct_domain_rad = anglesDuct;
 aero.wing_domain_rad = anglesWing;
 aero.source_type = 'fixture';
 aero.source_file = '';
-aero.is_physical = false;
 
 end

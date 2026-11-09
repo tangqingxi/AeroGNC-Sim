@@ -4,7 +4,6 @@ function snap = aero_communication_snapshot(bus)
 % 输入：bus - aero_topic_bus 实例（运行时唯一通信状态）
 % 输出：snap - 不含任何 handle 的普通结构体：
 %   schema         快照格式标识
-%   enabled        恒为 true（只有启用通信时才生成快照）
 %   topic_names    注册 Topic 列表
 %   publish_count  全局发布次数
 %   messages       每个 Topic 的最后一条消息（未发布为 []），按 topic_names 顺序
@@ -29,7 +28,6 @@ end
 
 snap = struct();
 snap.schema = 'aero-comm-snapshot/1';
-snap.enabled = true;
 snap.topic_names = names;
 snap.publish_count = bus.sequence();
 snap.messages = messages;

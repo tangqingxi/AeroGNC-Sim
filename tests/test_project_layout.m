@@ -35,6 +35,27 @@ for k = 1:numel(keyFunctions)
         keyFunctions{k}, numel(hits), strjoin(hits, '; '));
 end
 
+% ---- V1.0：已删除的旧接口不得回归 ----------------------------------
+legacyFunctions = {'aero_measurement'};
+for k = 1:numel(legacyFunctions)
+    check_that(isempty(which(legacyFunctions{k})), ...
+        '旧接口 %s 仍可解析', legacyFunctions{k});
+end
+
+legacyPatterns = {'bus\.measurements', 'aero_measurement', 'is_physical'};
+sourceFiles = dir(fullfile(root, 'src', '**', '*.m'));
+for k = 1:numel(sourceFiles)
+    text = fileread(fullfile(sourceFiles(k).folder, sourceFiles(k).name));
+    for p = 1:numel(legacyPatterns)
+        check_that(isempty(regexp(text, legacyPatterns{p}, 'once')), ...
+            '生产代码 %s 仍含旧接口 %s', sourceFiles(k).name, legacyPatterns{p});
+    end
+end
+
+defaultCfg = aero_default_config();
+check_that(~isfield(defaultCfg.communication, 'enabled'), ...
+    'V1.0 配置仍保留 communication.enabled 双模式开关');
+
 % ---- 禁止按开发轮次命名的目录 --------------------------------------
 forbidden = '^(phase\d+|step\d+|temp|newcode|old|backup|v\d+)$';
 directories = dir(fullfile(root, 'src', '**'));
@@ -86,7 +107,7 @@ for k = 1:numel(testFiles)
 end
 
 info = struct('passed', true, 'summary', sprintf( ...
-    '%d 个入口位置正确，无旧名称/重复定义/轮次目录；%d 个测试文件均被 run_tests 覆盖', ...
+    '%d 个入口位置正确，无旧接口/旧名称/重复定义/轮次目录；%d 个测试文件均被 run_tests 覆盖', ...
     size(entries, 1), numel(testFiles)));
 
 end
