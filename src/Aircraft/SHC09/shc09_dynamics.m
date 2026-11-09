@@ -44,7 +44,7 @@ dx(s.position) = v_n;
 dx(s.velocity) = a_n;
 dx(s.quaternion) = shc09_quat_kinematics(x(s.quaternion), omega);
 dx(s.omega) = omegaDot;
-dx(s.servo) = aero_servo_dynamics(delta, servoCommand, p.servo_device);
+dx(s.servo) = aero_servo_dynamics(delta, servoCommand, p.servo_dynamics);
 dx(s.motor) = aero_motor_dynamics(Omega, motorCommand, p.motor_device);
 
 end

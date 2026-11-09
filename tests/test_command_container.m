@@ -85,8 +85,43 @@ check_error(@() shc09_unpack_command(struct('servos', zeros(6, 1))), ...
 check_error(@() shc09_unpack_command(struct('servos', zeros(5, 1), 'motor', 1)), ...
     'shc09:command:servos', '舵面维度不是 6');
 
+% ---- 运行中非法命令必须立即失败 ------------------------------------
+probe = struct('name', 'badcmd', 'x0', 0, 'dynamics', @(t, x, cmd, env) 0); %#ok<INUSD>
+badCfg = aero_default_config();
+badCfg.tspan = [0, 0.3];
+badCfg.initial_command = 0;
+badCfg.components = struct('name', 'bad', 'kind', 'periodic', 'period', 0.1, ...
+    'priority', 10, 'latches', false, 'step', @(t, bus) bad_value(bus, 'nan'));
+check_error(@() aero_sim(probe, badCfg), 'aero:kernel:command', '运行中 NaN 命令');
+
+badCfg.components.step = @(t, bus) bad_value(bus, 'char');
+check_error(@() aero_sim(probe, badCfg), 'aero:kernel:command', '运行中字符命令');
+
+badCfg.components.step = @(t, bus) bad_value(bus, 'nested');
+check_error(@() aero_sim(probe, badCfg), 'aero:kernel:command', '运行中嵌套结构体命令');
+
+% SHC09 结构体字段形状错误（通用校验通过，物理层拒绝）
+src = struct('type', 'fixture', 'file', '', 'tables', shc09_aero_fixture());
+modelS = shc09_model(struct('aero_source', src, 'initial_mode', 'rest'));
+shapeCfg = aero_default_config();
+shapeCfg.tspan = [0, 0.1];
+shapeCfg.x0 = modelS.x0;
+shapeCfg.initial_command = modelS.initial_command;
+shapeCfg.components = struct( ...
+    'name', {'short_cmd', 'short_latch'}, ...
+    'kind', 'periodic', ...
+    'period', {0.01, 0.01}, ...
+    'priority', {40, 50}, ...
+    'latches', {false, true}, ...
+    'step', {@(t, bus) short_servos(bus), @(t, bus) latch_short(bus)});
+shapeError = capture_error(@() aero_sim(modelS, shapeCfg));
+check_that(strcmp(shapeError.identifier, 'aero:integration:failed') && ...
+    contains(shapeError.message, 'command.servos'), ...
+    '运行中舵面维度错误未被识别：%s (%s)', shapeError.identifier, shapeError.message);
+
 info = struct('passed', true, 'summary', sprintf( ...
-    '两路结构体命令独立锁存、互不覆盖（a: %.2f, b: %.2f），数值命令仍可用', heldA(idx), heldB(idx)));
+    '两路结构体命令独立锁存、互不覆盖（a: %.2f, b: %.2f），数值命令兼容，运行中非法命令被拒绝', ...
+    heldA(idx), heldB(idx)));
 
 end
 
@@ -101,4 +136,33 @@ end
 
 function bus = set_numeric(bus, value)
 bus.held_command = value;
+end
+
+function bus = bad_value(bus, kind)
+switch kind
+    case 'nan'
+        bus.command = NaN;
+    case 'char'
+        bus.command = 'bad';
+    case 'nested'
+        bus.command = struct('a', struct('b', 1));
+end
+end
+
+function bus = short_servos(bus)
+bus.command.servos = zeros(5, 1);
+end
+
+function bus = latch_short(bus)
+bus.held_command.servos = bus.command.servos;
+end
+
+function err = capture_error(fn)
+try
+    fn();
+catch caught
+    err = caught;
+    return;
+end
+error('aero:test:assert', '期望抛出错误，但没有错误');
 end

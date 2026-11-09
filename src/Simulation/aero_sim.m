@@ -148,6 +148,11 @@ for g = 1:nGroups
                 end
                 latchCount = latchCount + 1;
             end
+            % 组件更新后立即检查命令值：任意字段名均可，但必须是有限数值结构
+            aero_validate_command(bus.command, 'aero:kernel:command', ...
+                sprintf('组件 "%s" 在 t=%.17g 写入的 bus.command', component.name, t));
+            aero_validate_command(bus.held_command, 'aero:kernel:command', ...
+                sprintf('组件 "%s" 在 t=%.17g 写入的 bus.held_command', component.name, t));
             eventComponent{k} = component.name;
             eventAction{k} = 'step';
         end
@@ -182,6 +187,11 @@ result.computed = commandLog;
 result.segments = segments(~cellfun(@isempty, segments));
 result.solver = cfg.solver;
 result.config = cfg;
+% 机型可提供通用元数据（版本、质量、设备型号、数据来源等）；
+% 内核只原样记录，不解释字段，也不要求特定结构。
+if isfield(model, 'metadata') && isstruct(model.metadata)
+    result.model_metadata = model.metadata;
+end
 result.environment = aero_env_info();
 result.seed = cfg.seed;
 result.stats = struct( ...

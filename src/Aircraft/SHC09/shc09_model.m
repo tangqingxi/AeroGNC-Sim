@@ -71,6 +71,7 @@ model.outputs = @(t, x, env) shc09_outputs(t, x, p, aero, env);
 model.state_layout = shc09_state_layout();
 model.parameters = p;
 model.aero = aero;
+model.metadata = shc09_metadata(p, aero);
 model.initial_command = initialCommand;
 model.trim = trim;
 model.initial_mode = mode;

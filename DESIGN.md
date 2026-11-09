@@ -77,7 +77,8 @@ p.model_type = 'first_order';
 
 p.tau_s = 0.03;                    % 一阶时间常数，s
 p.rate_limit_rad_s = deg2rad(600); % 舵机角速率上限，rad/s（电机用 accel_limit_rad_s2）
-p.range_rad = deg2rad([-40, 40]);  % 机械行程，rad（电机用 omega_range_rad_s）
+p.range_rad = [-Inf, Inf];         % 设备行程能力；装配限制（如 ±40°）不写在这里
+% 电机型号额外声明：omega_range_rad_s（运行范围）、omega_stop_rad_s=0、stop_threshold_rad_s
 
 p.provenance = struct( ...
     'tau_s', '仿真假设 / 实测 / 厂家规格', ...
@@ -96,9 +97,14 @@ end
 电机：Ω̇ = clamp((Ω_cmd − Ω)/τ, ±a_max)，目标先按转速范围限幅
 ```
 
-`model_type` 只声明“用哪种动态描述”，当前仅 `'first_order'`。
-后续 `second_order`、`identified`、`nonlinear` 在真实需要时再实现，不预建空文件。
-不同 mode 可以有不同状态维数，由图型装配决定状态个数。
+`model_type` 必须显式声明；V0.1 只实现 `'first_order'`，其他值或缺失时通用动力学立即报错
+（`aero:components:modelType`），不得静默退化为其他模型。后续 `second_order`、`identified`、
+`nonlinear` 在真实需要时再实现，不预建空文件。不同 mode 可以有不同状态维数，由装配决定。
+
+**电机停机语义**：`omega_range_rad_s` 的下限（200 rad/s）是最低**运行**转速，不是物理下限。
+停机指令（`command ≤ stop_threshold_rad_s`，默认 1 rad/s）的目标是物理停机转速 0，
+允许真实零转速保持；启动指令再从 0 加速到运行范围。状态投影只限制 `[0, 最大转速]`，
+不得把停机状态抬到 200 rad/s。
 
 设备型号与动力学 mode 相互独立：同一舵机可用不同精度模型，同一模型可服务不同设备。
 
@@ -131,6 +137,11 @@ model.state_layout, model.parameters, model.aero, model.initial_command
 
 - `dynamics` 必须无副作用：不修改输入、不读写文件、不消耗随机数、不更新控制器。
 - `project` 只做数值约束（四元数范数、行程、转速），由内核在每个积分段后调用。
+- `metadata`（可选）由机型提供，内核原样写入 `result.model_metadata`；内核不解释字段。
+  SHC09 记录模型版本、质量/惯量及来源、设备型号与动态参数、生效行程、覆盖值和
+  外部气动数据文件 SHA256（可核查标识）。
+- 结构体命令在运行期由内核通用校验：组件每次更新后检查 `bus.command` / `bus.held_command`
+  必须为有限数值结构；非法值立即报 `aero:kernel:command`。
 - `env` 可选字段：`wind_ned_m_s`、`force_ned_n`、`torque_body_nm`。
 - 内核不解释状态含义；`state_layout` 是 SHC09 自己的定义。
 
@@ -163,7 +174,10 @@ B_acc = J_frd⁻¹ · B_tau
 | 参数 | 单位 | 归属 | 可信等级 |
 |---|---|---|---|
 | 质量、惯量 | kg、kg·m² | Aircraft 装配 | 参考值，未辨识 |
-| 力臂、方位角、限位 | m、rad | Aircraft 装配 | 实机定义 |
+| 力臂、方位角 | m、rad | Aircraft 装配 | 实机定义 |
+| 舵机设备能力 `range_rad` | rad | 设备型号（KST 未声明，取 `[-Inf, Inf]`） | 未声明 |
+| 舵面装配行程 ±40° | rad | Aircraft 装配 `servo_deflection_limit_rad` | 实机定义 |
+| **生效行程** = 能力 ∩ 装配 | rad | Aircraft 计算一次 `servo_effective_range_rad`，作为唯一 `range_rad` 传给通用动力学 | 唯一权威 |
 | `B_M` | — | Aircraft 几何 | 实机接线与几何 |
 | 涵道/机翼系数 | SI | Aircraft 气动数据 | **外部数据，许可待确认** |
 | 舵机 τ、速率 | s、rad/s | 设备型号 | 名义参数 |
@@ -191,9 +205,10 @@ B_acc = J_frd⁻¹ · B_tau
 
 - Simulation 内核（分段 `ode45`、多速率事件、锁存、测量延迟、结果与容量策略）。
 - 通用结构体命令容器（`command` 可为数值或有限数值字段结构体）。
-- Servo/Motor 通用一阶动力学与两个设备型号参数。
+- Servo/Motor 通用一阶动力学（含 `model_type` 校验、速率/行程/转速限幅、停机与启动语义）
+  与两个设备型号参数。
 - SHC09 20 状态非线性六自由度模型：刚体、涵道、机翼、六舵面、陀螺、反扭矩、风扰。
-- 悬停配平（不依赖气动表）、几何/效能/动力学/执行器/指令独立性/集成测试。
+- 悬停配平（不依赖气动表）、几何/效能/动力学/执行器/停机状态/指令独立性/输出语义/元数据/集成测试。
 
 **未实现 / 依赖外部条件**
 
