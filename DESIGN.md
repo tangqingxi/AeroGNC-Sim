@@ -213,7 +213,7 @@ B_acc = J_frd⁻¹ · B_tau
 - Communication：Latest-Value Topic Bus（注册、发布、读取、契约校验、可用/过期/时间倒退处理、
   真值隔离），V1.0 始终启用；结果快照、有界发布日志与边界校验已补齐。
 - GNC-Baseline：Position P、Velocity PID、Attitude P、Rate PID 四级独立控制器 + 独立 PINV
-  分配；两个闭环场景与 WTR 导出。全项目共 37 项测试（详见 §15）。
+  分配；两个闭环场景与 WTR 导出。全项目共 38 项测试（详见 §15）。
 
 **未实现 / 依赖外部条件**
 
@@ -424,14 +424,23 @@ src/Scenarios/            hover_scenario、rate_step_scenario（仅装配）
 
 ### 15.2 控制律与单位
 
-- **Position P**：`v_ref = v_ff + Kp_pos·(p_ref − p_est)`，水平/垂直限幅；无积分状态。
-- **Velocity PID**：`a_cmd = a_ff + Kp_vel·e_v + I_vel − Kd_vel·a_est`；积分限幅、
-  按加速度输出饱和冻结；`a_est` 来自 `navigation/state.acceleration`（测量差分，
-  非 Aircraft 真值）；D 为测量加速度反馈，单位 s。
-- **Attitude P**：`e = 2·vec(q⁻¹⊗q_d)`，`ω_ref = Kp_att·e + ω_ff`；`ω_ff` 单位 rad/s；
-  角加速度前馈（rad/s²）不得直接加到角速度上，当前输出 `alpha_ff=0`。
-- **Rate PID**：`τ = Kp_rate·e_rate + I_rate + Kff·ω_ref − Kd_rate·α_est`；积分限幅、
-  力矩限幅；抗饱和只从 `control/allocation_status.saturated` 读取，不访问分配器内部状态。
+- **Position P**：`v_ref = v_ff + Kp_pos·(p_ref − p_est)`；水平限幅按 PX4
+  `constrainXY` 语义优先保证位置反馈方向，垂直方向分别限制上升/下降；速度限幅
+  参数归 Position，无积分状态。
+- **Velocity PID**：`a_cmd = a_ff + Kp_vel·e_v + I_vel − Kd_vel·a_est`；
+  `a_est` 来自 `navigation/state.acceleration`（测量差分，非 Aircraft 真值）；
+  `Kd` 为无量纲（输出与输入均 m/s²）。垂直积分在 PID 前钳位到 ±g；垂直推力
+  到上/下限时按 PX4 语义冻结对应误差；水平方向使用 Tracking Anti-Windup
+  （`2/Kp_x`）；总推力、最小推力、水平推力余量和最大倾角共同约束控制需求。
+- **Attitude P**：PX4 默认 reduced-attitude 误差（`quat_error_default`），
+  `yaw_weight` 缩放偏航误差并在偏航增益侧补偿；`ω_ref = Kp_att·e + ω_yaw_rate
+  + ω_ref_model`；`ω_yaw_rate` 由世界系 yaw_rate 旋转到参考机体系；参考模型为
+  PX4 默认二阶临界阻尼 ZOH 形式（`MC_REF_W_N=50 rad/s`，`MC_REF_FF=0`），
+  输出不再混入角加速度；最后按 `rate_limit` 逐轴限幅。
+- **Rate PID**：`τ = Kp_rate·e_rate + I_rate + Kff·ω_ref − Kd_rate·α_est`；
+  **不做控制器本地力矩限幅**，执行器约束由 PINV 负责；积分限幅、条件积分和
+  `i_factor=max(0,1−(e_ω/400°)²)`；抗饱和只从 `control/allocation_status.saturated`
+  读取，不访问分配器内部状态。
 - **PINV**：`B_tau = d_cs·Ve²·diag([l1,l1,l2])·B_M`（N·m/rad），
   `δ = δ_trim + pinv(B_tau)·τ_d`；`τ_d` 是**相对配平的力矩增量**，零力矩回到配平；
   `residual = τ_d − B_tau·(δ−δ_trim)`，`saturated=sign(residual)`（限幅内为 0）。
@@ -445,8 +454,8 @@ src/Scenarios/            hover_scenario、rate_step_scenario（仅装配）
 | `navigation/state` | IdealState | 四级控制器 | p、v、a、q、ω、α、`ideal=1` |
 | `guidance/reference` | HoverHold | Position | p、v、a、yaw、yaw_rate |
 | `guidance/rate_reference` | BodyRate | Rate | ω、α |
-| `control/velocity_setpoint` | Position | Velocity | `velocity`、`acceleration_ff` |
-| `control/attitude_setpoint` | Velocity | Attitude、Allocation | q、`thrust_n` |
+| `control/velocity_setpoint` | Position | Velocity | `velocity`、`acceleration_ff`、`yaw`、`yaw_rate` |
+| `control/attitude_setpoint` | Velocity | Attitude、Allocation | q、`thrust_n`、`yaw`、`yaw_rate` |
 | `control/rate_setpoint` | Attitude | Rate | ω、α |
 | `control/torque_setpoint` | Rate | Allocation | `torque` |
 | `control/allocation_status` | Allocation | Rate、诊断 | δ、achieved、residual、saturated、motor、Ve_nom |
@@ -469,8 +478,8 @@ Guidance 的参考类型决定启用链：
 Velocity/Attitude 参考组合由同一组四级组件按需装配，不虚构额外制导算法。
 
 每个控制器只读写自己的 `bus.control_state.<level>`（velocity/rate 有积分状态，
-position/attitude 无状态）；跨模块数据只能经 Topic，不得用这些状态字段传值，
-也不得修改 Simulation 内核。
+attitude 有参考模型状态，position 无状态）；跨模块数据只能经 Topic，不得用这些
+状态字段传值，也不得修改 Simulation 内核。
 
 ### 15.5 频率与顺序
 
@@ -486,10 +495,12 @@ Rate 400 Hz、Allocation 400 Hz、舵面锁存 200 Hz、电机锁存 50 Hz。
 
 - `actuator_servos_pwm` 使用真实 `latch_servos` 事件时刻，`actuator_motors_pwm`
   使用 `latch_motor` 事件时刻；不使用状态输出时间轴，不插值；
-- manifest 的实验签名覆盖场景、参考、方法、种子、机型版本、完整增益、求解器、
-  时间区间、气动来源/可信等级/SHA256、参数覆盖与组件频率；
-- 参数记录机型/环境/气动/执行器/四级增益与限幅/PINV/频率/求解器/场景；
-  未知值不填默认，名义值不标实测；
+- manifest 的实验签名覆盖场景、参考、方法、种子、机型版本、完整增益、求解器
+  （含 `InitialStep`）、环境、时间容差、时间区间、气动来源/可信等级/SHA256、
+  参数覆盖，以及组件的 `kind/period/priority/offset/delay/latches/topic` 和实际初态；
+- 参数记录机型/环境/气动/执行器/四级增益与限幅/PINV/频率/求解器/场景，包括
+  `rates.guidance_hz`、`allocation.ve_min_m_s`、`control.rate.saturation_tolerance`、
+  涵道/阻尼/扩散器参数；未知值不填默认，名义值不标实测；
 - `.wtr` 复用 `aero_results_path`、`aero_results_check`，临时 ZIP 位于目标 Results
   目录同一文件系统，容量检查后原子改名；拒绝覆盖 `.mat`/`.wtr`，失败不删除权威 `.mat`。
 
@@ -498,4 +509,4 @@ Rate 400 Hz、Allocation 400 Hz、舵面锁存 200 Hz、电机锁存 50 Hz。
 1. 增益为仿真名义值；未实机辨识，未做鲁棒性/蒙特卡洛评估。
 2. 气动为合成 fixture，物理闭环验收 **BLOCKED**；不得表述为真实气动或实机验证。
 3. Navigation 为 IdealState，无传感器噪声/偏置；加速度由测量差分得到。
-4. 未实现 INDI/MPC/CA16/参考模型/增益调度；WTR 固定 v1 协议。
+4. 未实现 INDI/MPC/CA16/可选姿态误差模式/增益调度；WTR 固定 v1 协议。
