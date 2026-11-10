@@ -99,7 +99,7 @@ AeroGNC-Sim/
 │   └── Scenarios/
 │       ├── hover_scenario.m        悬停位置保持场景
 │       ├── rate_step_scenario.m    角速度阶跃场景
-│       └── Internal/               配置构建、签名、传感器、锁存
+│       └── Internal/               配置构建、实验定义/身份、传感器、锁存
 ├── tools/wtr/                      WTR 导出、校验、JSON/SHA/几何辅助
 ├── tests/                          回归测试与测试入口
 ├── examples/                       可运行示例
@@ -136,6 +136,8 @@ AeroGNC-Sim/
 | Guidance | `src/GNC/Guidance/` | 位置/角速度参考生成 |
 | Navigation | `src/GNC/Navigation/ideal_state.m` | IdealState 估计适配器 |
 | 场景装配 | `src/Scenarios/` | 组件、Topic、初值、频率组装 |
+| 实验定义 | `src/Scenarios/Internal/experiment_definition.m` | 唯一有效参数、参考、active modules |
+| 实验身份 | `src/Scenarios/Internal/aero_experiment_identity.m` | 定义+运行配置+模型快照的 SHA256 |
 | WTR 导出 | `tools/wtr/wtr_export.m` | 生成 `windtrace.flight.v1` |
 | WTR 校验 | `tools/wtr/wtr_validate.m` | 容器与数据契约检查 |
 | 测试入口 | `tests/run_tests.m` | 完整回归与测试清单检查 |
@@ -237,16 +239,45 @@ result = aero_sim(s.model, s.cfg);
 ### 6.5 导出 WTR
 
 ```matlab
-out = wtr_export(result, s.model, struct( ...
-    'scenario', s.name, ...
-    'signature', s.signature, ...
-    'gains', s.gains, ...
-    'seed', s.cfg.seed));
+out = wtr_export(result, s.model, struct('output_root', 'results'));
 % out.wtr_path 可由 WindTrace 打开
 ```
 
+`wtr_export` 不再接受 `scenario`、`signature`、`gains`、`method`、`seed`
+等身份字段；这些信息全部从 `result.config.experiment`、
+`result.config` 与 `result.model_metadata` 派生。传入旧字段会直接报错。
+
 导出要求发布日志完整（`dropped==0`）；`.wtr` 是派生可视化数据，权威原始数据
 是同一目录的 `simulation.mat`。
+
+### 6.7 实验配置与结果追溯
+
+```text
+Scenario
+   ↓
+Experiment Definition（cfg.experiment）
+   ↓
+Simulation
+   ↓
+result.config.experiment
+   + result.config
+   + result.model_metadata
+   ↓
+simulation.mat
+   ↓
+WTR Export（只读结果）
+   ↓
+flight.wtr
+   ↓
+WindTrace
+```
+
+- Scenario 生成唯一实验定义；控制器回调从同一定义派生参数。
+- Simulation 原样保存实际运行配置、实验定义和模型快照。
+- WTR 不重新接受调用者的 gains/signature；身份、参数和参考条件均来自结果。
+- `definition_sha256` 保护实验定义，`identity_sha256` 保护定义+运行配置+模型快照。
+- `simulation.mat` 是权威原始结果，`flight.wtr` 是派生的可视化交付；导出失败
+  不删除原始 MAT，也不覆盖已有文件。
 
 ### 6.6 运行测试
 

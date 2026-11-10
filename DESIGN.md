@@ -213,7 +213,7 @@ B_acc = J_frd⁻¹ · B_tau
 - Communication：Latest-Value Topic Bus（注册、发布、读取、契约校验、可用/过期/时间倒退处理、
   真值隔离），V1.0 始终启用；结果快照、有界发布日志与边界校验已补齐。
 - GNC-Baseline：Position P、Velocity PID、Attitude P、Rate PID 四级独立控制器 + 独立 PINV
-  分配；两个闭环场景与 WTR 导出。全项目共 39 项测试（详见 §15）。
+  分配；两个闭环场景与 WTR 导出。全项目共 40 项测试（详见 §15）。
 
 **未实现 / 依赖外部条件**
 
@@ -263,7 +263,7 @@ AeroGNC-Sim/
 │   │       ├── Allocation/        pinv_allocator
 │   │       └── Internal/          control_defaults、topic_specs、四元数/推力辅助
 │   ├── Scenarios/                 hover_scenario、rate_step_scenario
-│   │   └── Internal/              build_config、experiment_signature、ideal_sensor_sample、latch_*
+│   │   └── Internal/              build_config、experiment_definition、aero_experiment_identity、ideal_sensor_sample、latch_*
 │   └── Components/Actuators/{Servo,Motor}/
 │       ├── aero_*_dynamics.m      通用动力学（不绑定品牌）
 │       └── +<Class>Devices/+<MODEL>/parameters.m
@@ -507,7 +507,37 @@ Rate 400 Hz、Allocation 400 Hz、舵面锁存 200 Hz、电机锁存 50 Hz。
 - `.wtr` 复用 `aero_results_path`、`aero_results_check`，临时 ZIP 位于目标 Results
   目录同一文件系统，容量检查后原子改名；拒绝覆盖 `.mat`/`.wtr`，失败不删除权威 `.mat`。
 
-### 15.7 限制
+### 15.7 实验定义与结果追溯
+
+Scenario 在 `cfg.experiment` 中建立唯一实验定义：
+
+```text
+cfg.experiment
+├── schema = 'aero-experiment-definition/1'
+├── definition
+│   ├── scenario / method / active_modules
+│   ├── guidance / navigation
+│   ├── controllers（只含实际启用级）
+│   ├── allocation
+│   ├── rates
+│   └── components（最终 validate 后的调度字段）
+├── definition_sha256
+└── identity_sha256
+```
+
+- Controller 回调从 `definition.controllers` 派生，禁止另造一套用于签名的 gains。
+- `definition_sha256` 只覆盖 schema+definition；`identity_sha256` 覆盖定义、
+  `result.config` 的运行字段和 `result.model_metadata`，用于拒绝仿真后的配置篡改。
+- `result.config` 保存 tspan/x0/solver/seed/environment/组件调度/通信配置；
+  `result.model_metadata` 保存机型、质量/惯量、气动来源/trust/SHA、执行器与 trim。
+- 三者分层保存，不合并为一个巨大结构体，也不新增 `result.experiment` 副本。
+- WTR 只读结果：不再接受调用者的 gains/signature/method/seed/scenario；
+  导出前校验 schema、定义/身份 SHA、active_modules、组件、模型快照和日志完整性。
+- `simulation.mat` 是权威原始结果；`flight.wtr` 从它派生，manifest 的
+  `input_signature` 使用 `identity_sha256`，`source.log_sha256` 关联实际 MAT。
+- 导出失败不得删除 MAT 或留下半成品；禁止覆盖已有 MAT/WTR。
+
+### 15.8 限制
 
 1. 增益为仿真名义值；未实机辨识，未做鲁棒性/蒙特卡洛评估。
 2. 气动为合成 fixture，物理闭环验收 **BLOCKED**；不得表述为真实气动或实机验证。
