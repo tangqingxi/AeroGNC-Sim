@@ -100,6 +100,11 @@ check_error(@() wtr_export(bad, scenario.model, struct('output_root', badRoot)),
     'wtr:identity:definition', '篡改分配参数未拒绝');
 
 bad = result;
+bad.config.experiment.definition.scenario = 'rate_step';
+check_error(@() wtr_export(bad, scenario.model, struct('output_root', badRoot)), ...
+    'wtr:identity:definition', '把 HoverHold 标记为 BodyRate 未拒绝');
+
+bad = result;
 bad.config.tspan(2) = bad.config.tspan(2) + 0.1;
 check_error(@() wtr_export(bad, scenario.model, struct('output_root', badRoot)), ...
     'wtr:identity:input', '篡改 tspan 未拒绝');
