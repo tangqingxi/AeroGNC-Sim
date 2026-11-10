@@ -9,11 +9,18 @@ if nargin < 5
     extra = struct();
 end
 
-components = struct('name', {}, 'period', {}, 'priority', {});
+components = struct('name', {}, 'kind', {}, 'period', {}, 'priority', {}, ...
+    'offset', {}, 'delay', {}, 'latches', {}, 'topic', {});
 for k = 1:numel(cfg.components)
-    components(k).name = cfg.components(k).name;
-    components(k).period = cfg.components(k).period;
-    components(k).priority = cfg.components(k).priority;
+    c = cfg.components(k);
+    components(k).name = c.name;
+    components(k).kind = c.kind;
+    components(k).period = c.period;
+    components(k).priority = c.priority;
+    components(k).offset = c.offset;
+    components(k).delay = c.delay;
+    components(k).latches = c.latches;
+    components(k).topic = c.topic;
 end
 
 aero = struct('source_type', model.metadata.aero.source_type, ...
@@ -27,6 +34,8 @@ signature.method = 'P_PID_P_PID_PINV';
 signature.seed = cfg.seed;
 signature.tspan = cfg.tspan;
 signature.solver = cfg.solver;
+signature.environment = cfg.environment;
+signature.time_tolerance = cfg.time_tolerance;
 signature.model = struct('name', model.name, 'version', model.version);
 signature.gains = gains;
 signature.aero = aero;
@@ -34,5 +43,5 @@ signature.overrides = model.parameters.overrides;
 signature.components = components;
 signature.extra = extra;
 signature.initial_command = cfg.initial_command;
-signature.x0 = cfg.x0;
+signature.initial_state = cfg.x0;
 end

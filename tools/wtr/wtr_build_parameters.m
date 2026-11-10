@@ -24,6 +24,15 @@ add('duct.k_Ts', p.duct.k_Ts, 'N/(rad/s*m/s)', 'shc09_parameters');
 add('duct.k_Ns', p.duct.k_Ns, 'N/(rad/s*m/s)', 'shc09_parameters');
 add('duct.k_Q0', p.duct.k_Q0, 'N*m/(rad/s)^2', 'shc09_parameters');
 add('duct.l_cpz', p.duct.l_cpz, 'm', 'shc09_parameters');
+add('duct.k_cpx', p.duct.k_cpx, 'N*m/(rad/s*m/s)', 'shc09_parameters');
+add('vehicle.fixed_vane_coefficient', p.fixed_vane_coefficient, 'N*m/(m/s)^2', 'shc09_parameters');
+add('vehicle.damping_k_my0', p.damping_k_my0, 'N*m/(rad/s)', 'shc09_parameters');
+add('vehicle.damping_k_myv', p.damping_k_myv, 'N*m/(rad/s*m/s)', 'shc09_parameters');
+add('vehicle.rotor_direction', p.rotor_direction, '1', 'shc09_parameters');
+add('vehicle.servo_deflection_limit_rad', p.servo_deflection_limit_rad, 'rad', 'assembly limit');
+add('vehicle.servo_pwm_rate_hz', p.servo_pwm_rate_hz, 'Hz', 'assembly configuration');
+add('vehicle.servo_latch_rate_hz', p.servo_latch_rate_hz, 'Hz', 'assembly configuration');
+add('vehicle.motor_latch_rate_hz', p.motor_latch_rate_hz, 'Hz', 'assembly configuration');
 
 % ---- 气动来源与可信等级 ---------------------------------------------
 add('aero.source_type', p.aero_source.type, '-', 'shc09_parameters.aero_source');
@@ -45,24 +54,33 @@ add('actuator.motor_stop_rad_s', p.motor_device.omega_stop_rad_s, 'rad/s', 'MAD 
 % ---- 控制参数 --------------------------------------------------------
 g = options.gains;
 add('control.position.Kp', g.position.Kp, '1/s', 'control_defaults');
+add('control.position.velocity_limit_xy', g.position.velocity_limit_xy, 'm/s', 'control_defaults');
+add('control.position.velocity_limit_up', g.position.velocity_limit_up, 'm/s', 'control_defaults');
+add('control.position.velocity_limit_down', g.position.velocity_limit_down, 'm/s', 'control_defaults');
 add('control.velocity.Kp', g.velocity.Kp, '1/s', 'control_defaults');
 add('control.velocity.Ki', g.velocity.Ki, '1/s^2', 'control_defaults');
-add('control.velocity.Kd', g.velocity.Kd, 's', 'control_defaults');
+add('control.velocity.Kd', g.velocity.Kd, '1', 'control_defaults');
 add('control.velocity.integral_limit', g.velocity.integral_limit, 'm/s^2', 'control_defaults');
-add('control.velocity.limit_xy', g.velocity.limit_xy, 'm/s', 'control_defaults');
-add('control.velocity.limit_up', g.velocity.limit_up, 'm/s', 'control_defaults');
-add('control.velocity.limit_down', g.velocity.limit_down, 'm/s', 'control_defaults');
-add('control.acceleration_limit', g.acceleration_limit, 'm/s^2', 'control_defaults');
 add('control.max_tilt_rad', g.max_tilt_rad, 'rad', 'control_defaults');
+add('control.velocity.max_thrust_n', ...
+    p.duct.k_T0 * p.motor_device.omega_range_rad_s(2)^2, 'N', 'actuator limit');
+add('control.velocity.min_thrust_n', ...
+    0.12 * p.duct.k_T0 * p.motor_device.omega_range_rad_s(2)^2, 'N', 'MPC_THR_MIN adaptation');
+add('control.velocity.horizontal_thrust_margin_n', ...
+    0.3 * p.duct.k_T0 * p.motor_device.omega_range_rad_s(2)^2, 'N', 'MPC_THR_XY_MARG adaptation');
 add('control.attitude.Kp', g.attitude.Kp, '1/s', 'control_defaults');
 add('control.attitude.rate_limit', g.attitude.rate_limit, 'rad/s', 'control_defaults');
-add('control.attitude.omega_ff', g.attitude.omega_ff, 'rad/s', 'control_defaults');
+add('control.attitude.yaw_weight', g.attitude.yaw_weight, '1', 'control_defaults');
+add('control.attitude.ref_model.enabled', double(g.attitude.ref_model.enabled), '1', 'control_defaults');
+add('control.attitude.ref_model.omega_n', g.attitude.ref_model.omega_n, 'rad/s', 'control_defaults');
+add('control.attitude.ref_model.ff_gain', g.attitude.ref_model.ff_gain, '1', 'control_defaults');
+add('control.attitude.ref_model.ff_limit', g.attitude.ref_model.ff_limit, 'rad/s', 'control_defaults');
 add('control.rate.Kp', g.rate.Kp, 'N*m/(rad/s)', 'control_defaults');
 add('control.rate.Ki', g.rate.Ki, 'N*m/rad', 'control_defaults');
 add('control.rate.Kd', g.rate.Kd, 'N*m/(rad/s^2)', 'control_defaults');
 add('control.rate.Kff', g.rate.Kff, 'N*m/(rad/s)', 'control_defaults');
 add('control.rate.integral_limit', g.rate.integral_limit, 'N*m', 'control_defaults');
-add('control.rate.torque_limit', g.rate.torque_limit, 'N*m', 'control_defaults');
+add('control.rate.saturation_tolerance', g.rate.saturation_tolerance, 'N*m', 'control_defaults');
 
 % ---- 分配与配平 ------------------------------------------------------
 geometry = shc09_control_surface_geometry(p);
@@ -73,10 +91,14 @@ add('allocation.l2_m', p.l2_m, 'm', 'shc09_parameters');
 add('allocation.trim_delta_rad', model.trim.delta_rad, 'rad', 'shc09_hover_equilibrium');
 add('allocation.trim_omega_rad_s', model.trim.omega_rad_s, 'rad/s', 'shc09_hover_equilibrium');
 add('allocation.trim_ve_m_s', model.trim.exit_speed_m_s, 'm/s', 'shc09_hover_equilibrium');
+add('allocation.ve_min_m_s', g.allocation.ve_min_m_s, 'm/s', 'control_defaults');
+add('allocation.motor_min_rad_s', p.motor_device.omega_range_rad_s(1), 'rad/s', 'MAD device');
+add('allocation.motor_max_rad_s', p.motor_device.omega_range_rad_s(2), 'rad/s', 'MAD device');
 
 % ---- 频率、求解器、场景 ---------------------------------------------
 add('rates.position_hz', g.rates.position_hz, 'Hz', 'control_defaults');
 add('rates.velocity_hz', g.rates.velocity_hz, 'Hz', 'control_defaults');
+add('rates.guidance_hz', g.rates.guidance_hz, 'Hz', 'control_defaults');
 add('rates.attitude_hz', g.rates.attitude_hz, 'Hz', 'control_defaults');
 add('rates.rate_hz', g.rates.rate_hz, 'Hz', 'control_defaults');
 add('rates.servo_latch_hz', g.rates.servo_latch_hz, 'Hz', 'control_defaults');
@@ -86,6 +108,11 @@ add('rates.navigation_hz', g.rates.navigation_hz, 'Hz', 'control_defaults');
 add('solver.RelTol', sig.solver.RelTol, '1', 'cfg.solver');
 add('solver.AbsTol', sig.solver.AbsTol, '1', 'cfg.solver');
 add('solver.MaxStep', sig.solver.MaxStep, 's', 'cfg.solver');
+if isempty(sig.solver.InitialStep)
+    add('solver.InitialStep', 'auto', '-', 'cfg.solver');
+else
+    add('solver.InitialStep', sig.solver.InitialStep, 's', 'cfg.solver');
+end
 add('experiment.scenario', sig.scenario, '-', 'scenario');
 add('experiment.method', sig.method, '-', 'scenario');
 add('experiment.seed', sig.seed, '1', 'cfg.seed');

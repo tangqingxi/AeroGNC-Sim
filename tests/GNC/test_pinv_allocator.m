@@ -9,7 +9,8 @@ params = allocation_params(p, trim, geometry);
 
 % 零力矩 → 精确回到配平，电机与悬停转速一致
 bus.topics.publish('control/attitude_setpoint', ...
-    struct('quaternion', [1; 0; 0; 0], 'thrust_n', trim.thrust_n), 0, 0, 0, 'test');
+    struct('quaternion', [1; 0; 0; 0], 'thrust_n', trim.thrust_n, ...
+    'yaw', 0, 'yaw_rate', 0), 0, 0, 0, 'test');
 bus.topics.publish('control/torque_setpoint', struct('torque', zeros(3, 1)), 0, 0, 0, 'test');
 bus = pinv_allocator(0, bus, params);
 check_that(max(abs(bus.command.servos - trim.delta_rad)) < 1e-12, ...

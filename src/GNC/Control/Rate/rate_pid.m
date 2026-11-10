@@ -14,6 +14,13 @@ function bus = rate_pid(t, bus, params)
 %
 % 积分状态归本控制器所有；积分限幅，并按分配器上一拍的饱和方向冻结。
 % 抗饱和只通过 Topic 读取，不访问分配器内部状态或其它控制器状态。
+%
+% PX4 RateControl 对齐项：
+%   - PID 求和后**不做本地力矩限幅**；实际约束由 PINV/执行器限幅与
+%     分配器饱和反馈承担。
+%   - 条件积分先按饱和方向钳位误差符号，再乘 i_factor：
+%       i_factor = max(0, 1 − (e_ω / (400°/s))²)
+%   - 一阶欧拉积分，积分限幅。
 
 if ~isfield(bus, 'control_state')
     bus.control_state = struct();
@@ -40,7 +47,6 @@ rateError = ref.data.omega(:) - nav.data.omega(:);
 torque = params.rate.Kp .* rateError + state.integral ...
     + params.rate.Kff .* ref.data.omega(:) ...
     - params.rate.Kd .* nav.data.alpha(:);
-torque = min(max(torque, -params.rate.torque_limit), params.rate.torque_limit);
 
 % 饱和反馈必须来自 Topic；缺失时按未饱和处理
 saturated = zeros(3, 1);
@@ -49,13 +55,18 @@ if strcmp(statusOk, 'ok')
     saturated = status.data.saturated(:);
 end
 
+iFactorAngle = deg2rad(400);
 for axis = 1:3
-    blocked = (saturated(axis) > 0 && rateError(axis) > 0) || ...
-              (saturated(axis) < 0 && rateError(axis) < 0);
-    if ~blocked
-        state.integral(axis) = state.integral(axis) + ...
-            params.rate.Ki(axis) * rateError(axis) * dt;
+    errorAxis = rateError(axis);
+    % 条件积分：正饱和时不再允许正误差，负饱和时不再允许负误差
+    if saturated(axis) > 0
+        errorAxis = min(errorAxis, 0);
+    elseif saturated(axis) < 0
+        errorAxis = max(errorAxis, 0);
     end
+    iFactor = max(0, 1 - (errorAxis / iFactorAngle)^2);
+    state.integral(axis) = state.integral(axis) ...
+        + params.rate.Ki(axis) * iFactor * errorAxis * dt;
 end
 state.integral = min(max(state.integral, -params.rate.integral_limit), ...
     params.rate.integral_limit);

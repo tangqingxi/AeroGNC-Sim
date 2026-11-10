@@ -27,6 +27,21 @@ if nargin < 3
 end
 options = fill_defaults(options);
 
+% 签名是实验身份的唯一来源；manifest 的 seed/method/scenario 必须与之一致
+sig = options.signature;
+if ~isstruct(sig) || isempty(fieldnames(sig))
+    error('wtr:export:signature', '导出必须提供非空实验签名');
+end
+if isfield(sig, 'seed') && ~isequal(sig.seed, options.seed)
+    error('wtr:export:seed', 'manifest seed 与实验签名不一致');
+end
+if isfield(sig, 'method') && ~strcmp(sig.method, options.method)
+    error('wtr:export:method', 'manifest method 与实验签名不一致');
+end
+if isfield(sig, 'scenario') && ~strcmp(sig.scenario, options.scenario)
+    error('wtr:export:scenario', 'manifest scenario 与实验签名不一致');
+end
+
 if ~isfield(result, 'communication') || ~result.communication.log.enabled
     error('wtr:export:log', '导出需要 cfg.communication.log.enabled=true');
 end
