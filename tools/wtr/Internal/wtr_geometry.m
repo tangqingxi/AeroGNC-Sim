@@ -1,10 +1,19 @@
-function geometry = wtr_geometry(p)
+function geometry = wtr_geometry(m)
 %WTR_GEOMETRY 生成 windtrace.geometry.v1 自包含 FRD 几何
 %
-% 只使用 SHC09 已冻结的装配几何（六舵面方位角、l1/l2、生效行程）构造
-% 示意网格；不包含气动效能、实测铰链或第三方模型。Viewer 只按该几何
-% 与飞行数据绘制，不回读源工程。
+% 输入可以是 result.model_metadata（优先）或旧 model.parameters。
+% 只使用已冻结的装配几何；不读取气动效能或实测铰链。
 
+if isfield(m, 'geometry') && isfield(m.geometry, 'control_surface_angle_rad')
+    p = struct();
+    p.control_surface_angle_rad = m.geometry.control_surface_angle_rad;
+    p.l1_m = m.geometry.l1_m;
+    p.l2_m = m.geometry.l2_m;
+    p.rotor_radius_m = m.geometry.rotor_radius_m;
+    p.servo_effective_range_rad = m.servo_effective_range_rad;
+else
+    p = m;
+end
 g = shc09_control_surface_geometry(p);
 phi = g.phi_rad(:);
 

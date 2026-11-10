@@ -1,132 +1,160 @@
-function entries = wtr_build_parameters(model, options)
-%WTR_BUILD_PARAMETERS 导出本次实验的完整生效参数（WindTrace parameters.v1）
+function entries = wtr_build_parameters(result, identity)
+%WTR_BUILD_PARAMETERS 从结果快照导出完整生效参数（windtrace.parameters.v1）
 %
-% 只记录模型/控制实际使用的数值与来源，不把未知字段补成默认值，也不把
-% 名义值标成实测值。字符串参数（设备型号、气动来源/可信等级）以文本记录。
+% 数据来源仅为：
+%   result.model_metadata（机型/执行器/气动）
+%   result.config.experiment.definition（控制器/参考/分配/频率）
+%   result.config（运行配置）
+% 不再读取 options.gains 或调用者传入的 model.parameters。
 
-p = model.parameters;
-sig = options.signature;
-overrides = model.parameters.overrides;
+m = result.model_metadata;
+def = identity.experiment.definition;
+cfg = result.config;
+p = parameters_from_metadata(m);
+overrides = p.overrides;
 rows = {};
 
 % ---- 机型与环境 ------------------------------------------------------
-add('vehicle.mass_kg', p.mass_kg, 'kg', 'shc09_parameters');
-add('vehicle.gravity_m_s2', p.gravity_m_s2, 'm/s^2', 'shc09_parameters');
-add('vehicle.inertia_frd_kg_m2', p.inertia_frd_kg_m2, 'kg*m^2', 'shc09_parameters');
-add('vehicle.rotor_radius_m', p.rotor_radius_m, 'm', 'shc09_parameters');
-add('vehicle.disc_area_m2', p.disc_area_m2, 'm^2', 'shc09_parameters');
-add('vehicle.diffuser_ratio', p.diffuser_ratio, '1', 'shc09_parameters');
-add('vehicle.air_density_kg_m3', p.air_density_kg_m3, 'kg/m^3', 'shc09_parameters');
-add('vehicle.fan_inertia_kg_m2', p.fan_inertia_kg_m2, 'kg*m^2', 'shc09_parameters');
-add('duct.k_T0', p.duct.k_T0, 'N/(rad/s)^2', 'shc09_parameters');
-add('duct.k_Th', p.duct.k_Th, 'N/(rad/s*m/s)', 'shc09_parameters');
-add('duct.k_Ts', p.duct.k_Ts, 'N/(rad/s*m/s)', 'shc09_parameters');
-add('duct.k_Ns', p.duct.k_Ns, 'N/(rad/s*m/s)', 'shc09_parameters');
-add('duct.k_Q0', p.duct.k_Q0, 'N*m/(rad/s)^2', 'shc09_parameters');
-add('duct.l_cpz', p.duct.l_cpz, 'm', 'shc09_parameters');
-add('duct.k_cpx', p.duct.k_cpx, 'N*m/(rad/s*m/s)', 'shc09_parameters');
-add('vehicle.fixed_vane_coefficient', p.fixed_vane_coefficient, 'N*m/(m/s)^2', 'shc09_parameters');
-add('vehicle.damping_k_my0', p.damping_k_my0, 'N*m/(rad/s)', 'shc09_parameters');
-add('vehicle.damping_k_myv', p.damping_k_myv, 'N*m/(rad/s*m/s)', 'shc09_parameters');
-add('vehicle.rotor_direction', p.rotor_direction, '1', 'shc09_parameters');
-add('vehicle.servo_deflection_limit_rad', p.servo_deflection_limit_rad, 'rad', 'assembly limit');
-add('vehicle.servo_pwm_rate_hz', p.servo_pwm_rate_hz, 'Hz', 'assembly configuration');
-add('vehicle.servo_latch_rate_hz', p.servo_latch_rate_hz, 'Hz', 'assembly configuration');
-add('vehicle.motor_latch_rate_hz', p.motor_latch_rate_hz, 'Hz', 'assembly configuration');
+add('vehicle.mass_kg', p.mass_kg, 'kg', 'model_metadata.mass_kg');
+add('vehicle.gravity_m_s2', p.gravity_m_s2, 'm/s^2', 'model_metadata.environment');
+add('vehicle.inertia_frd_kg_m2', p.inertia_frd_kg_m2, 'kg*m^2', 'model_metadata.inertia');
+add('vehicle.rotor_radius_m', p.rotor_radius_m, 'm', 'model_metadata.geometry');
+add('vehicle.disc_area_m2', p.disc_area_m2, 'm^2', 'model_metadata.geometry');
+add('vehicle.diffuser_ratio', p.diffuser_ratio, '1', 'model_metadata.geometry');
+add('vehicle.air_density_kg_m3', p.air_density_kg_m3, 'kg/m^3', 'model_metadata.environment');
+add('vehicle.fan_inertia_kg_m2', p.fan_inertia_kg_m2, 'kg*m^2', 'model_metadata.geometry');
+add('duct.k_T0', p.duct.k_T0, 'N/(rad/s)^2', 'model_metadata.duct_coefficients');
+add('duct.k_Th', p.duct.k_Th, 'N/(rad/s*m/s)', 'model_metadata.duct_coefficients');
+add('duct.k_Ts', p.duct.k_Ts, 'N/(rad/s*m/s)', 'model_metadata.duct_coefficients');
+add('duct.k_Ns', p.duct.k_Ns, 'N/(rad/s*m/s)', 'model_metadata.duct_coefficients');
+add('duct.k_Q0', p.duct.k_Q0, 'N*m/(rad/s)^2', 'model_metadata.duct_coefficients');
+add('duct.l_cpz', p.duct.l_cpz, 'm', 'model_metadata.duct_coefficients');
+add('duct.k_cpx', p.duct.k_cpx, 'N*m/(rad/s*m/s)', 'model_metadata.duct_coefficients');
+add('vehicle.fixed_vane_coefficient', p.fixed_vane_coefficient, 'N*m/(m/s)^2', 'model_metadata');
+add('vehicle.damping_k_my0', p.damping_k_my0, 'N*m/(rad/s)', 'model_metadata.damping');
+add('vehicle.damping_k_myv', p.damping_k_myv, 'N*m/(rad/s*m/s)', 'model_metadata.damping');
+add('vehicle.rotor_direction', p.rotor_direction, '1', 'model_metadata.geometry');
+add('vehicle.servo_deflection_limit_rad', p.servo_deflection_limit_rad, 'rad', 'model_metadata.servo_assembly_limit');
+add('vehicle.servo_pwm_rate_hz', p.servo_pwm_rate_hz, 'Hz', 'model_metadata');
+add('vehicle.servo_latch_rate_hz', p.servo_latch_rate_hz, 'Hz', 'model_metadata');
+add('vehicle.motor_latch_rate_hz', p.motor_latch_rate_hz, 'Hz', 'model_metadata');
 
 % ---- 气动来源与可信等级 ---------------------------------------------
-add('aero.source_type', p.aero_source.type, '-', 'shc09_parameters.aero_source');
-add('aero.trust', model.metadata.aero.trust, '-', 'shc09_metadata');
-add('aero.file_sha256', model.metadata.aero.file_sha256, '-', 'shc09_metadata');
+add('aero.source_type', m.aero.source_type, '-', 'model_metadata.aero');
+add('aero.trust', m.aero.trust, '-', 'model_metadata.aero');
+add('aero.file_sha256', m.aero.file_sha256, '-', 'model_metadata.aero');
 add('aero.physical_validation_allowed', ...
-    double(model.aero.physical_validation_allowed), '1', 'shc09_metadata');
+    double(m.aero.physical_validation_allowed), '1', 'model_metadata.aero');
 
 % ---- 执行器 ----------------------------------------------------------
-add('actuator.servo_device', p.servo_device.device_name, '-', 'KST device');
-add('actuator.servo_tau_s', p.servo_device.tau_s, 's', 'KST nominal');
-add('actuator.servo_rate_limit_rad_s', p.servo_device.rate_limit_rad_s, 'rad/s', 'KST nominal');
-add('actuator.servo_effective_range_rad', p.servo_effective_range_rad, 'rad', 'assembly limit');
-add('actuator.motor_device', p.motor_device.device_name, '-', 'MAD device');
-add('actuator.motor_tau_s', p.motor_device.tau_s, 's', 'MAD nominal');
-add('actuator.motor_range_rad_s', p.motor_device.omega_range_rad_s, 'rad/s', 'MAD nominal');
-add('actuator.motor_stop_rad_s', p.motor_device.omega_stop_rad_s, 'rad/s', 'MAD definition');
+add('actuator.servo_device', p.servo_device.device_name, '-', 'model_metadata.servo_device');
+add('actuator.servo_tau_s', p.servo_device.tau_s, 's', 'model_metadata.servo_device');
+add('actuator.servo_rate_limit_rad_s', p.servo_device.rate_limit_rad_s, 'rad/s', 'model_metadata.servo_device');
+add('actuator.servo_effective_range_rad', p.servo_effective_range_rad, 'rad', 'model_metadata.servo_effective_range');
+add('actuator.motor_device', p.motor_device.device_name, '-', 'model_metadata.motor_device');
+add('actuator.motor_tau_s', p.motor_device.tau_s, 's', 'model_metadata.motor_device');
+add('actuator.motor_range_rad_s', p.motor_device.omega_range_rad_s, 'rad/s', 'model_metadata.motor_device');
+add('actuator.motor_stop_rad_s', p.motor_device.omega_stop_rad_s, 'rad/s', 'model_metadata.motor_device');
 
-% ---- 控制参数 --------------------------------------------------------
-g = options.gains;
-add('control.position.Kp', g.position.Kp, '1/s', 'control_defaults');
-add('control.position.velocity_limit_xy', g.position.velocity_limit_xy, 'm/s', 'control_defaults');
-add('control.position.velocity_limit_up', g.position.velocity_limit_up, 'm/s', 'control_defaults');
-add('control.position.velocity_limit_down', g.position.velocity_limit_down, 'm/s', 'control_defaults');
-add('control.velocity.Kp', g.velocity.Kp, '1/s', 'control_defaults');
-add('control.velocity.Ki', g.velocity.Ki, '1/s^2', 'control_defaults');
-add('control.velocity.Kd', g.velocity.Kd, '1', 'control_defaults');
-add('control.velocity.integral_limit', g.velocity.integral_limit, 'm/s^2', 'control_defaults');
-add('control.max_tilt_rad', g.max_tilt_rad, 'rad', 'control_defaults');
-add('control.velocity.max_thrust_n', ...
-    p.duct.k_T0 * p.motor_device.omega_range_rad_s(2)^2, 'N', 'actuator limit');
-add('control.velocity.hover_thrust_n', model.trim.thrust_n, 'N', 'shc09_hover_equilibrium');
-add('control.velocity.min_thrust_n', ...
-    0.12 * p.duct.k_T0 * p.motor_device.omega_range_rad_s(2)^2, 'N', 'MPC_THR_MIN adaptation');
-add('control.velocity.horizontal_thrust_margin_n', ...
-    0.3 * p.duct.k_T0 * p.motor_device.omega_range_rad_s(2)^2, 'N', 'MPC_THR_XY_MARG adaptation');
-add('control.attitude.Kp', g.attitude.Kp, '1/s', 'control_defaults');
-add('control.attitude.rate_limit', g.attitude.rate_limit, 'rad/s', 'control_defaults');
-add('control.attitude.yaw_weight', g.attitude.yaw_weight, '1', 'control_defaults');
-add('control.attitude.ref_model.enabled', double(g.attitude.ref_model.enabled), '1', 'control_defaults');
-add('control.attitude.ref_model.omega_n', g.attitude.ref_model.omega_n, 'rad/s', 'control_defaults');
-add('control.attitude.ref_model.ff_gain', g.attitude.ref_model.ff_gain, '1', 'control_defaults');
-add('control.attitude.ref_model.ff_limit', g.attitude.ref_model.ff_limit, 'rad/s', 'control_defaults');
-add('control.rate.Kp', g.rate.Kp, 'N*m/(rad/s)', 'control_defaults');
-add('control.rate.Ki', g.rate.Ki, 'N*m/rad', 'control_defaults');
-add('control.rate.Kd', g.rate.Kd, 'N*m/(rad/s^2)', 'control_defaults');
-add('control.rate.Kff', g.rate.Kff, 'N*m/(rad/s)', 'control_defaults');
-add('control.rate.integral_limit', g.rate.integral_limit, 'N*m', 'control_defaults');
-add('control.rate.saturation_tolerance', g.rate.saturation_tolerance, 'N*m', 'control_defaults');
+% ---- 控制参数（来自 experiment.definition） --------------------------
+if isfield(def.controllers, 'position')
+    g = def.controllers.position;
+    add('control.position.Kp', g.Kp, '1/s', 'experiment.definition.controllers.position');
+    add('control.position.velocity_limit_xy', g.velocity_limit_xy, 'm/s', 'experiment.definition.controllers.position');
+    add('control.position.velocity_limit_up', g.velocity_limit_up, 'm/s', 'experiment.definition.controllers.position');
+    add('control.position.velocity_limit_down', g.velocity_limit_down, 'm/s', 'experiment.definition.controllers.position');
+end
+if isfield(def.controllers, 'velocity')
+    g = def.controllers.velocity;
+    add('control.velocity.Kp', g.Kp, '1/s', 'experiment.definition.controllers.velocity');
+    add('control.velocity.Ki', g.Ki, '1/s^2', 'experiment.definition.controllers.velocity');
+    add('control.velocity.Kd', g.Kd, '1', 'experiment.definition.controllers.velocity');
+    add('control.velocity.integral_limit', g.integral_limit, 'm/s^2', 'experiment.definition.controllers.velocity');
+    add('control.velocity.max_thrust_n', g.max_thrust_n, 'N', 'experiment.definition.controllers.velocity');
+    add('control.velocity.hover_thrust_n', g.hover_thrust_n, 'N', 'experiment.definition.controllers.velocity');
+    add('control.velocity.min_thrust_n', g.min_thrust_n, 'N', 'experiment.definition.controllers.velocity');
+    add('control.velocity.horizontal_thrust_margin_n', ...
+        g.horizontal_thrust_margin_n, 'N', 'experiment.definition.controllers.velocity');
+    add('control.velocity.max_tilt_rad', g.max_tilt_rad, 'rad', 'experiment.definition.controllers.velocity');
+end
+if isfield(def.controllers, 'attitude')
+    g = def.controllers.attitude;
+    add('control.attitude.Kp', g.Kp, '1/s', 'experiment.definition.controllers.attitude');
+    add('control.attitude.rate_limit', g.rate_limit, 'rad/s', 'experiment.definition.controllers.attitude');
+    add('control.attitude.yaw_weight', g.yaw_weight, '1', 'experiment.definition.controllers.attitude');
+    add('control.attitude.ref_model.enabled', double(g.ref_model.enabled), '1', 'experiment.definition.controllers.attitude');
+    add('control.attitude.ref_model.omega_n', g.ref_model.omega_n, 'rad/s', 'experiment.definition.controllers.attitude');
+    add('control.attitude.ref_model.ff_gain', g.ref_model.ff_gain, '1', 'experiment.definition.controllers.attitude');
+    add('control.attitude.ref_model.ff_limit', g.ref_model.ff_limit, 'rad/s', 'experiment.definition.controllers.attitude');
+end
+g = def.controllers.rate;
+add('control.rate.Kp', g.Kp, 'N*m/(rad/s)', 'experiment.definition.controllers.rate');
+add('control.rate.Ki', g.Ki, 'N*m/rad', 'experiment.definition.controllers.rate');
+add('control.rate.Kd', g.Kd, 'N*m/(rad/s^2)', 'experiment.definition.controllers.rate');
+add('control.rate.Kff', g.Kff, 'N*m/(rad/s)', 'experiment.definition.controllers.rate');
+add('control.rate.integral_limit', g.integral_limit, 'N*m', 'experiment.definition.controllers.rate');
+add('control.rate.saturation_tolerance', g.saturation_tolerance, 'N*m', 'experiment.definition.controllers.rate');
 
 % ---- 分配与配平 ------------------------------------------------------
-geometry = shc09_control_surface_geometry(p);
-add('allocation.B_M', geometry.B_M, '1', 'shc09_control_surface_geometry');
-add('allocation.servo_torque_coefficient', p.servo_torque_coefficient, 'N*m/rad', 'shc09_parameters');
-add('allocation.l1_m', p.l1_m, 'm', 'shc09_parameters');
-add('allocation.l2_m', p.l2_m, 'm', 'shc09_parameters');
-add('allocation.trim_delta_rad', model.trim.delta_rad, 'rad', 'shc09_hover_equilibrium');
-add('allocation.trim_omega_rad_s', model.trim.omega_rad_s, 'rad/s', 'shc09_hover_equilibrium');
-add('allocation.trim_ve_m_s', model.trim.exit_speed_m_s, 'm/s', 'shc09_hover_equilibrium');
-add('allocation.ve_min_m_s', g.allocation.ve_min_m_s, 'm/s', 'control_defaults');
-add('allocation.motor_min_rad_s', p.motor_device.omega_range_rad_s(1), 'rad/s', 'MAD device');
-add('allocation.motor_max_rad_s', p.motor_device.omega_range_rad_s(2), 'rad/s', 'MAD device');
+a = def.allocation;
+add('allocation.algorithm', a.algorithm, '-', 'experiment.definition.allocation');
+add('allocation.B_M', a.B_M, '1', 'experiment.definition.allocation');
+add('allocation.B_tau', a.B_tau, 'N*m/rad', 'experiment.definition.allocation');
+add('allocation.servo_torque_coefficient', a.servo_torque_coefficient, 'N*m/rad', 'experiment.definition.allocation');
+add('allocation.l1_m', a.l1_m, 'm', 'experiment.definition.allocation');
+add('allocation.l2_m', a.l2_m, 'm', 'experiment.definition.allocation');
+add('allocation.trim_delta_rad', a.trim_delta_rad, 'rad', 'experiment.definition.allocation');
+add('allocation.delta_limit_rad', a.delta_limit_rad, 'rad', 'experiment.definition.allocation');
+add('allocation.ve_min_m_s', a.ve_min_m_s, 'm/s', 'experiment.definition.allocation');
+add('allocation.hover_thrust_n', a.hover_thrust_n, 'N', 'experiment.definition.allocation');
+add('allocation.max_thrust_n', a.max_thrust_n, 'N', 'experiment.definition.allocation');
+add('allocation.min_thrust_n', a.min_thrust_n, 'N', 'experiment.definition.allocation');
+add('allocation.motor_min_rad_s', a.motor_min_rad_s, 'rad/s', 'experiment.definition.allocation');
+add('allocation.motor_max_rad_s', a.motor_max_rad_s, 'rad/s', 'experiment.definition.allocation');
+add('allocation.motor_model', a.motor_model, '-', 'experiment.definition.allocation');
 
 % ---- 频率、求解器、场景 ---------------------------------------------
-add('rates.position_hz', g.rates.position_hz, 'Hz', 'control_defaults');
-add('rates.velocity_hz', g.rates.velocity_hz, 'Hz', 'control_defaults');
-add('rates.guidance_hz', g.rates.guidance_hz, 'Hz', 'control_defaults');
-add('rates.attitude_hz', g.rates.attitude_hz, 'Hz', 'control_defaults');
-add('rates.rate_hz', g.rates.rate_hz, 'Hz', 'control_defaults');
-add('rates.servo_latch_hz', g.rates.servo_latch_hz, 'Hz', 'control_defaults');
-add('rates.motor_latch_hz', g.rates.motor_latch_hz, 'Hz', 'control_defaults');
-add('rates.sensor_hz', g.rates.sensor_hz, 'Hz', 'control_defaults');
-add('rates.navigation_hz', g.rates.navigation_hz, 'Hz', 'control_defaults');
-add('solver.RelTol', sig.solver.RelTol, '1', 'cfg.solver');
-add('solver.AbsTol', sig.solver.AbsTol, '1', 'cfg.solver');
-add('solver.MaxStep', sig.solver.MaxStep, 's', 'cfg.solver');
-if isempty(sig.solver.InitialStep)
-    add('solver.InitialStep', 'auto', '-', 'cfg.solver');
+r = def.rates;
+add('rates.position_hz', r.position_hz, 'Hz', 'experiment.definition.rates');
+add('rates.velocity_hz', r.velocity_hz, 'Hz', 'experiment.definition.rates');
+add('rates.guidance_hz', r.guidance_hz, 'Hz', 'experiment.definition.rates');
+add('rates.attitude_hz', r.attitude_hz, 'Hz', 'experiment.definition.rates');
+add('rates.rate_hz', r.rate_hz, 'Hz', 'experiment.definition.rates');
+add('rates.servo_latch_hz', r.servo_latch_hz, 'Hz', 'experiment.definition.rates');
+add('rates.motor_latch_hz', r.motor_latch_hz, 'Hz', 'experiment.definition.rates');
+add('rates.sensor_hz', r.sensor_hz, 'Hz', 'experiment.definition.rates');
+add('rates.navigation_hz', r.navigation_hz, 'Hz', 'experiment.definition.rates');
+add('solver.RelTol', cfg.solver.RelTol, '1', 'result.config.solver');
+add('solver.AbsTol', cfg.solver.AbsTol, '1', 'result.config.solver');
+add('solver.MaxStep', cfg.solver.MaxStep, 's', 'result.config.solver');
+if isempty(cfg.solver.InitialStep)
+    add('solver.InitialStep', 'auto', '-', 'result.config.solver');
 else
-    add('solver.InitialStep', sig.solver.InitialStep, 's', 'cfg.solver');
+    add('solver.InitialStep', cfg.solver.InitialStep, 's', 'result.config.solver');
 end
-add('experiment.scenario', sig.scenario, '-', 'scenario');
-add('experiment.method', sig.method, '-', 'scenario');
-add('experiment.seed', sig.seed, '1', 'cfg.seed');
-add('experiment.tspan', sig.tspan, 's', 'cfg.tspan');
-add('experiment.model_version', sig.model.version, '-', 'model');
-if isfield(sig, 'extra') && isstruct(sig.extra)
-    extraNames = fieldnames(sig.extra);
-    for k = 1:numel(extraNames)
-        value = sig.extra.(extraNames{k});
-        if ischar(value) || isstring(value) || isscalar(value) || isnumeric(value)
-            add(['experiment.reference.' extraNames{k}], value, '-', 'scenario reference');
-        end
-    end
+add('experiment.scenario', identity.scenario, '-', 'experiment.definition');
+add('experiment.method', identity.method, '-', 'experiment.definition');
+add('experiment.seed', cfg.seed, '1', 'result.config.seed');
+add('experiment.tspan', cfg.tspan, 's', 'result.config.tspan');
+add('experiment.model_version', m.model_version, '-', 'model_metadata');
+add('experiment.definition_sha256', identity.experiment.definition_sha256, '-', 'experiment.definition');
+add('experiment.identity_sha256', identity.input_signature_sha256, '-', 'experiment.identity');
+
+% ---- 参考条件（来自 definition.guidance） ---------------------------
+guidance = def.guidance;
+switch guidance.type
+    case 'HoverHold'
+        add('experiment.reference.position', guidance.position_m, 'm', 'experiment.definition.guidance');
+        add('experiment.reference.velocity', guidance.velocity_m_s, 'm/s', 'experiment.definition.guidance');
+        add('experiment.reference.acceleration', guidance.acceleration_m_s2, 'm/s^2', 'experiment.definition.guidance');
+        add('experiment.reference.yaw', guidance.yaw_rad, 'rad', 'experiment.definition.guidance');
+        add('experiment.reference.yaw_rate', guidance.yaw_rate_rad_s, 'rad/s', 'experiment.definition.guidance');
+    case 'BodyRateStep'
+        add('experiment.reference.axis', guidance.axis, '1', 'experiment.definition.guidance');
+        add('experiment.reference.amplitude', guidance.amplitude_rad_s, 'rad/s', 'experiment.definition.guidance');
+        add('experiment.reference.start_s', guidance.start_s, 's', 'experiment.definition.guidance');
+        add('experiment.reference.end_s', guidance.end_s, 's', 'experiment.definition.guidance');
+        add('experiment.reference.alpha_ff', guidance.alpha_ff_rad_s2, 'rad/s^2', 'experiment.definition.guidance');
 end
 
 % ---- 显式参数覆盖（如有） -------------------------------------------
@@ -160,4 +188,38 @@ end
         item.overridden = isfield(overrides, strrep(path, 'overrides.', ''));
         rows{end + 1} = item; %#ok<AGROW>
     end
+end
+
+% ===========================================================================
+function p = parameters_from_metadata(m)
+p = struct();
+p.mass_kg = m.mass_kg;
+p.gravity_m_s2 = m.environment.gravity_m_s2;
+p.air_density_kg_m3 = m.environment.air_density_kg_m3;
+p.inertia_frd_kg_m2 = m.inertia_frd_kg_m2;
+p.rotor_radius_m = m.geometry.rotor_radius_m;
+p.disc_area_m2 = m.geometry.disc_area_m2;
+p.diffuser_ratio = m.geometry.diffuser_ratio;
+p.fan_inertia_kg_m2 = m.geometry.fan_inertia_kg_m2;
+p.rotor_direction = m.geometry.rotor_direction;
+p.l1_m = m.geometry.l1_m;
+p.l2_m = m.geometry.l2_m;
+p.control_surface_angle_rad = m.geometry.control_surface_angle_rad;
+p.duct = m.duct_coefficients;
+p.damping_k_my0 = m.damping.k_my0;
+p.damping_k_myv = m.damping.k_myv;
+p.servo_torque_coefficient = m.servo_torque_coefficient;
+p.fixed_vane_coefficient = m.fixed_vane_coefficient;
+p.servo_device = m.servo_device;
+p.motor_device = m.motor_device;
+p.servo_effective_range_rad = m.servo_effective_range_rad;
+p.servo_deflection_limit_rad = m.servo_assembly_limit_rad;
+p.servo_pwm_rate_hz = m.servo_pwm_rate_hz;
+p.servo_latch_rate_hz = m.servo_latch_rate_hz;
+p.motor_latch_rate_hz = m.motor_latch_rate_hz;
+p.aero_source = struct('type', m.aero.source_type, 'file', m.aero.source_file, 'tables', []);
+p.aero_domain_policy = m.aero_domain_policy;
+p.overrides = m.overrides;
+p.version = m.model_version;
+p.name = m.model_name;
 end

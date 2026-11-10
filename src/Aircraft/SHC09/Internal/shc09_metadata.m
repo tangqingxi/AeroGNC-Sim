@@ -1,4 +1,8 @@
-function m = shc09_metadata(p, aero)
+function m = shc09_metadata(p, aero, trim)
+% ...（原有说明）
+if nargin < 3 || isempty(trim) || ~isfield(trim, 'delta_rad')
+    trim = shc09_hover_equilibrium(p);
+end
 %SHC09_METADATA 生成可复现的模型元数据（通用结构，内核原样记录）
 %
 % 记录：
@@ -49,6 +53,11 @@ m.damping = struct('k_my0', p.damping_k_my0, 'k_myv', p.damping_k_myv);
 m.servo_torque_coefficient = p.servo_torque_coefficient;
 m.fixed_vane_coefficient = p.fixed_vane_coefficient;
 m.aero_domain_policy = p.aero_domain_policy;
+m.trim = struct( ...
+    'delta_rad', trim.delta_rad, ...
+    'thrust_n', trim.thrust_n, ...
+    'omega_rad_s', trim.omega_rad_s, ...
+    'exit_speed_m_s', trim.exit_speed_m_s);
 
 m.servo_device = p.servo_device;
 m.motor_device = p.motor_device;

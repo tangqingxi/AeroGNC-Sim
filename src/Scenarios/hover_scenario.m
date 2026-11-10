@@ -16,7 +16,7 @@ function s = hover_scenario(options)
 %   gains             控制参数（默认 control_defaults）
 %   max_records       发布日志容量（默认 300000）
 %
-% 输出 s：name/model/cfg/gains/mode，可直接交给 aero_sim。
+% 输出 s：name/mode/model/cfg；唯一实验定义在 s.cfg.experiment。
 %
 % 物理边界：真实气动数据未入库时，fixture 只能证明软件通路，不能作为
 % 物理闭环验证；调用方必须保留这一区分。
@@ -40,19 +40,12 @@ cfg = build_config(model, 'hover', struct( ...
     'yaw_rate', options.yaw_rate, ...
     'gains', gains, ...
     'max_records', options.max_records));
-cfg = aero_validate_config(cfg);
 
 s = struct();
-s.name = 'hover_hold';
+s.name = cfg.experiment.definition.scenario;
 s.mode = 'hover';
 s.model = model;
 s.cfg = cfg;
-s.gains = gains;
-s.trim = model.trim;
-s.reference = struct('position', options.reference_position(:), ...
-    'velocity', zeros(3, 1), 'acceleration', zeros(3, 1), ...
-    'yaw', options.yaw, 'yaw_rate', options.yaw_rate);
-s.signature = experiment_signature(s.name, cfg, model, gains, s.reference);
 
 end
 

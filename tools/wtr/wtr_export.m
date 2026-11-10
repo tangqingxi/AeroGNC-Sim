@@ -2,19 +2,19 @@ function out = wtr_export(result, model, options)
 %WTR_EXPORT 将一次 AeroGNC-Sim 结果导出为 WindTrace windtrace.flight.v1
 %
 % 用法：
-%   out = wtr_export(result, model, struct('scenario','gnc_rate_step', ...
-%       'signature', signatureStruct));
+%   out = wtr_export(result, model, struct('output_root', 'results'));
 %
 % 输入：
-%   result  - aero_sim 结果；必须启用发布日志且 dropped==0（完整历史）
-%   model   - SHC09 模型（state_layout/parameters）
-%   options - scenario、output_root、signature、method、seed、run_id、
-%             save_simulation（默认 true）
+%   result  - aero_sim 结果；必须包含 result.config.experiment 与 model_metadata
+%   model   - 仅用于已验证的状态布局；名称/版本/元数据必须与结果一致
+%   options - output_root、run_id、save_simulation、policy；
+%             不接受 gains/signature/method/seed/scenario 等身份字段
 %
 % 输出：
 %   out - struct：run_id、directory、mat_path、wtr_path、sha256、members
 %
 % 边界：
+%   - 身份、参数、参考和模型快照全部从 result 派生；
 %   - simulation.mat 是权威原始结果；flight.wtr 是派生可视化交付；
 %   - 导出失败只清理本次临时文件，不删除/覆盖已有 .mat 或 .wtr；
 %   - 只使用已记录的历史（Topic 发布日志 + 结果状态），不用最新值拼造；
@@ -24,6 +24,13 @@ function out = wtr_export(result, model, options)
 
 if nargin < 3
     options = struct();
+end
+forbidden = {'scenario', 'signature', 'method', 'seed', 'gains'};
+for k = 1:numel(forbidden)
+    if isfield(options, forbidden{k})
+        error('wtr:export:identity', ...
+            '实验身份字段 %s 必须从结果派生，禁止由调用者传入', forbidden{k});
+    end
 end
 options = fill_defaults(options);
 
@@ -36,36 +43,16 @@ if log.dropped ~= 0
         '发布日志丢弃了 %d 条记录，不能作为完整飞行历史导出', log.dropped);
 end
 
-% 签名是实验身份的唯一来源；manifest 的 seed/method/scenario 必须与之一致
-sig = options.signature;
-if ~isstruct(sig) || isempty(fieldnames(sig))
-    error('wtr:export:signature', '导出必须提供非空实验签名');
-end
-if isfield(sig, 'seed') && ~isequal(sig.seed, options.seed)
-    error('wtr:export:seed', 'manifest seed 与实验签名不一致');
-end
-if isfield(sig, 'method') && ~strcmp(sig.method, options.method)
-    error('wtr:export:method', 'manifest method 与实验签名不一致');
-end
-if isfield(sig, 'scenario') && ~strcmp(sig.scenario, options.scenario)
-    error('wtr:export:scenario', 'manifest scenario 与实验签名不一致');
-end
-if ~isfield(options, 'gains') || isempty(options.gains)
-    error('wtr:export:gains', '导出必须提供实际生效的 options.gains');
-end
-if ~isequaln(options.gains, sig.gains)
-    error('wtr:export:gains', 'options.gains 与实验签名不一致');
-end
-validate_signature_against_config(result, model, options.signature);
+% 身份/定义/模型/运行配置全部从 result 自身恢复并校验；不得信任调用者。
+identity = wtr_experiment_identity(result, model);
+scenario = sanitize_name(identity.scenario);
+signatureHash = identity.input_signature_sha256;
 
 % ---- 1. 身份与路径 ---------------------------------------------------
 outputRoot = options.output_root;
 if isempty(outputRoot)
     outputRoot = fullfile(aero_project_root(), 'results');
 end
-scenario = sanitize_name(options.scenario);
-signatureText = wtr_json(options.signature);
-signatureHash = wtr_sha256(uint8(signatureText));
 if isempty(options.run_id)
     run_id = sprintf('%s_%s', scenario, signatureHash(1:12));
 else
@@ -89,9 +76,9 @@ end
 % ---- 2. 组装 topics 与 specs（先验证历史完整） -----------------------
 [topics, specs] = wtr_build_topics(result, model, log);
 
-% ---- 3. 参数与几何 ---------------------------------------------------
-parameters = wtr_build_parameters(model, options);
-geometry = wtr_geometry(model.parameters);
+% ---- 3. 参数与几何（从结果快照派生，不读调用者 model.parameters） ----
+parameters = wtr_build_parameters(result, identity);
+geometry = wtr_geometry(result.model_metadata);
 
 % ---- 4. 保存权威 .mat（存在则拒绝覆盖） -----------------------------
 if options.save_simulation
@@ -128,8 +115,8 @@ members('geometry.json') = member_info(fullfile(stage, 'geometry.json'));
 manifest = struct();
 manifest.schema = 'windtrace.flight.v1';
 manifest.run_id = run_id;
-manifest.method = options.method;
-manifest.seed = options.seed;
+manifest.method = identity.method;
+manifest.seed = identity.seed;
 manifest.scenario = scenario;
 manifest.duration_s = result.time(end);
 manifest.execution = struct('status', 'completed', ...
@@ -143,11 +130,11 @@ manifest.source = struct( ...
     'sidecar_sha256', struct(), ...
     'engine', 'AeroGNC-Sim', ...
     'input_signature', signatureHash, ...
-    'input_signature_scope', 'scenario+config+gain signature', ...
+    'input_signature_scope', 'experiment definition + runtime config + model snapshot', ...
     'records', struct('navigation', 'IdealState（真值派生的测试适配器，非 EKF）', ...
         'actuator_estimate', '锁存指令，非舵面反馈估计', ...
-        'aero_trust', model.metadata.aero.trust, ...
-        'aero_file_sha256', model.metadata.aero.file_sha256));
+        'aero_trust', result.model_metadata.aero.trust, ...
+        'aero_file_sha256', result.model_metadata.aero.file_sha256));
 manifest.exporter = struct('name', 'AeroGNC-Sim wtr_export', 'version', '1.0.0');
 manifest.topics = specs;
 manifest.missing_topics = {};
@@ -193,11 +180,7 @@ end
 % ===========================================================================
 function options = fill_defaults(options)
 defaults = struct( ...
-    'scenario', 'gnc_scenario', ...
     'output_root', '', ...
-    'signature', struct(), ...
-    'method', 'P_PID_P_PID_PINV', ...
-    'seed', 0, ...
     'run_id', '', ...
     'save_simulation', true, 'policy', []);
 names = fieldnames(defaults);
@@ -257,48 +240,3 @@ end
 end
 
 % ===========================================================================
-function validate_signature_against_config(result, model, sig)
-% 在创建目录/写文件之前比较实际 result.config 与签名，避免留下半成品。
-cfg = result.config;
-require_same(sig.seed, cfg.seed, 'wtr:export:seed', 'seed');
-require_same(sig.tspan, cfg.tspan, 'wtr:export:tspan', 'tspan');
-require_same(sig.solver, cfg.solver, 'wtr:export:solver', 'solver');
-require_same(sig.environment, cfg.environment, 'wtr:export:environment', 'environment');
-require_same(sig.time_tolerance, cfg.time_tolerance, 'wtr:export:time', 'time_tolerance');
-require_same(sig.initial_state, cfg.x0, 'wtr:export:x0', 'initial_state');
-require_same(sig.initial_command, cfg.initial_command, 'wtr:export:ic', 'initial_command');
-require_same(sig.components, serialize_components(cfg.components), ...
-    'wtr:export:components', 'components');
-require_same(sig.model.name, model.name, 'wtr:export:model', 'model.name');
-require_same(sig.model.version, model.version, 'wtr:export:model', 'model.version');
-require_same(sig.aero.source_type, model.metadata.aero.source_type, ...
-    'wtr:export:aero', 'aero.source_type');
-require_same(sig.aero.trust, model.metadata.aero.trust, ...
-    'wtr:export:aero', 'aero.trust');
-require_same(sig.aero.file_sha256, model.metadata.aero.file_sha256, ...
-    'wtr:export:aero', 'aero.file_sha256');
-require_same(sig.aero.physical_validation_allowed, ...
-    model.aero.physical_validation_allowed, 'wtr:export:aero', 'aero.validation');
-end
-
-function c = serialize_components(components)
-% 只比较签名字段；不比较 step/sample 函数句柄。
-c = struct('name', {}, 'kind', {}, 'period', {}, 'priority', {}, ...
-    'offset', {}, 'delay', {}, 'latches', {}, 'topic', {});
-for k = 1:numel(components)
-    c(k).name = components(k).name;
-    c(k).kind = components(k).kind;
-    c(k).period = components(k).period;
-    c(k).priority = components(k).priority;
-    c(k).offset = components(k).offset;
-    c(k).delay = components(k).delay;
-    c(k).latches = components(k).latches;
-    c(k).topic = components(k).topic;
-end
-end
-
-function require_same(actual, expected, id, label)
-if ~isequaln(actual, expected)
-    error(id, '实验签名与实际执行配置不一致：%s', label);
-end
-end

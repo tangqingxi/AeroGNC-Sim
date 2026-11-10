@@ -34,18 +34,12 @@ cfg = build_config(model, 'rate', struct( ...
     'end_s', options.end_s, ...
     'gains', gains, ...
     'max_records', options.max_records));
-cfg = aero_validate_config(cfg);
 
 s = struct();
-s.name = 'rate_step';
+s.name = cfg.experiment.definition.scenario;
 s.mode = 'rate';
 s.model = model;
 s.cfg = cfg;
-s.gains = gains;
-s.trim = model.trim;
-s.command = struct('axis', options.axis, 'amplitude', options.amplitude, ...
-    'start_s', options.start_s, 'end_s', options.end_s);
-s.signature = experiment_signature(s.name, cfg, model, gains, s.command);
 
 end
 
