@@ -64,6 +64,7 @@ add('control.velocity.integral_limit', g.velocity.integral_limit, 'm/s^2', 'cont
 add('control.max_tilt_rad', g.max_tilt_rad, 'rad', 'control_defaults');
 add('control.velocity.max_thrust_n', ...
     p.duct.k_T0 * p.motor_device.omega_range_rad_s(2)^2, 'N', 'actuator limit');
+add('control.velocity.hover_thrust_n', model.trim.thrust_n, 'N', 'shc09_hover_equilibrium');
 add('control.velocity.min_thrust_n', ...
     0.12 * p.duct.k_T0 * p.motor_device.omega_range_rad_s(2)^2, 'N', 'MPC_THR_MIN adaptation');
 add('control.velocity.horizontal_thrust_margin_n', ...
@@ -118,6 +119,15 @@ add('experiment.method', sig.method, '-', 'scenario');
 add('experiment.seed', sig.seed, '1', 'cfg.seed');
 add('experiment.tspan', sig.tspan, 's', 'cfg.tspan');
 add('experiment.model_version', sig.model.version, '-', 'model');
+if isfield(sig, 'extra') && isstruct(sig.extra)
+    extraNames = fieldnames(sig.extra);
+    for k = 1:numel(extraNames)
+        value = sig.extra.(extraNames{k});
+        if ischar(value) || isstring(value) || isscalar(value) || isnumeric(value)
+            add(['experiment.reference.' extraNames{k}], value, '-', 'scenario reference');
+        end
+    end
+end
 
 % ---- 显式参数覆盖（如有） -------------------------------------------
 names = fieldnames(overrides);
