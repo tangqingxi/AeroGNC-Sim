@@ -20,7 +20,7 @@ end
 
 definitionPayload = struct('schema', experiment.schema, ...
     'definition', experiment.definition);
-actualDefinitionHash = aero_sha256_text(jsonencode(definitionPayload));
+actualDefinitionHash = aero_sha256_text(aero_canonical_json(definitionPayload));
 if ~strcmp(actualDefinitionHash, experiment.definition_sha256)
     error('wtr:identity:definition', '实验定义 SHA256 不一致');
 end
@@ -38,6 +38,10 @@ if ~isfield(result, 'model') || ~strcmp(result.model, model.name)
 end
 if ~isequaln(model.metadata, result.model_metadata)
     error('wtr:identity:model', '传入 model.metadata 与结果快照不一致');
+end
+if ~isfield(model, 'state_layout') || ~isequaln(model.state_layout, ...
+        result.model_metadata.state_layout)
+    error('wtr:identity:layout', '传入 model.state_layout 与结果快照不一致');
 end
 if ~isfield(result.model_metadata, 'model_name') ...
         || ~strcmp(result.model_metadata.model_name, model.name) ...

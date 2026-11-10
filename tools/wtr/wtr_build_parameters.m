@@ -140,6 +140,19 @@ add('experiment.model_version', m.model_version, '-', 'model_metadata');
 add('experiment.definition_sha256', identity.experiment.definition_sha256, '-', 'experiment.definition');
 add('experiment.identity_sha256', identity.input_signature_sha256, '-', 'experiment.identity');
 
+% ---- 软件执行环境（不属于实验输入签名） -----------------------------
+env = result.environment;
+add('software.matlab_version', env.matlab_version, '-', 'result.environment');
+add('software.matlab_release', env.matlab_release, '-', 'result.environment');
+add('software.computer', env.computer, '-', 'result.environment');
+add('software.git_commit', env.git_commit, '-', 'result.environment');
+add('software.git_dirty', double(env.git_dirty), '1', 'result.environment');
+if env.git_dirty
+    add('software.reproducibility_note', ...
+        'source tree dirty; commit SHA alone is not an exact reproduction', ...
+        '-', 'result.environment');
+end
+
 % ---- 参考条件（来自 definition.guidance） ---------------------------
 guidance = def.guidance;
 switch guidance.type

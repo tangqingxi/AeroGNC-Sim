@@ -1,4 +1,4 @@
-function [topics, specs] = wtr_build_topics(result, model, log)
+function [topics, specs] = wtr_build_topics(result, log)
 %WTR_BUILD_TOPICS 由结果与发布日志构造 WTR topics/specs
 %
 % 时间规则：
@@ -7,7 +7,7 @@ function [topics, specs] = wtr_build_topics(result, model, log)
 %     发布），不跨 Topic 插值；
 %   - 真值直接取 result.time/result.state，不伪装成估计。
 
-layout = model.state_layout;
+layout = result.model_metadata.state_layout;
 truthTime = result.time(:);
 state = result.state;
 

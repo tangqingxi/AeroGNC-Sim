@@ -276,6 +276,11 @@ WindTrace
 - Simulation 原样保存实际运行配置、实验定义和模型快照。
 - WTR 不重新接受调用者的 gains/signature；身份、参数和参考条件均来自结果。
 - `definition_sha256` 保护实验定义，`identity_sha256` 保护定义+运行配置+模型快照。
+- 身份使用稳定规范化序列化：struct 字段排序、数组/cell 顺序与数值维度保留；
+  跨机器哈希排除气动文件本地路径，保留来源/trust/文件 SHA/内容 SHA/有效域。
+- `state_layout` 记录完整状态索引；WTR 从结果快照恢复布局，不盲信调用者。
+- MATLAB version/release/computer/git commit/git dirty 作为软件来源单独记录；
+  若源码 dirty，明确标记 commit SHA 本身不能保证精确复现。
 - `simulation.mat` 是权威原始结果，`flight.wtr` 是派生的可视化交付；导出失败
   不删除原始 MAT，也不覆盖已有文件。
 

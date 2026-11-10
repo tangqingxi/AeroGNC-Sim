@@ -15,6 +15,12 @@ if isfield(experiment, 'identity_sha256')
     experiment = rmfield(experiment, 'identity_sha256');
 end
 
+model = modelMetadata;
+% 原始 result.model_metadata 保留本地文件路径；身份哈希不跨机器携带路径。
+if isfield(model, 'aero') && isfield(model.aero, 'source_file')
+    model.aero = rmfield(model.aero, 'source_file');
+end
+
 runtime = struct();
 runtime.tspan = cfg.tspan;
 runtime.x0 = cfg.x0;
@@ -30,9 +36,8 @@ identity = struct();
 identity.schema = 'aero-experiment-identity/1';
 identity.experiment = experiment;
 identity.runtime = runtime;
-identity.model = modelMetadata;
-identity.input_signature_sha256 = '';
-text = jsonencode(identity);
+identity.model = model;
+text = aero_canonical_json(identity);
 identity.input_signature_sha256 = aero_sha256_text(text);
 
 end

@@ -27,8 +27,17 @@ m = struct();
 m.model_name = p.name;
 m.model_version = p.version;
 m.frame = p.frame;
-m.state_layout = struct('nx', 20, ...
-    'order', 'p_n(3), v_n(3), q_bn(4), omega_b(3), delta(6), Omega(1)');
+layout = shc09_state_layout();
+m.state_layout = struct( ...
+    'nx', layout.nx, ...
+    'position', layout.position, ...
+    'velocity', layout.velocity, ...
+    'quaternion', layout.quaternion, ...
+    'omega', layout.omega, ...
+    'servo', layout.servo, ...
+    'motor', layout.motor, ...
+    'units', {layout.units}, ...
+    'description', layout.description);
 m.units = 'm, m/s, -, rad/s, rad, rad/s';
 
 m.mass_kg = p.mass_kg;
@@ -76,6 +85,7 @@ m.aero.trust = aero.trust;
 m.aero.physical_validation_allowed = aero.physical_validation_allowed;
 m.aero.duct_domain_rad = aero.duct_domain_rad;
 m.aero.wing_domain_rad = aero.wing_domain_rad;
+m.aero.content_sha256 = aero_content_sha256(aero);
 if strcmpi(aero.source_type, 'external') && ~isempty(aero.source_file)
     m.aero.file_sha256 = sha256_of_file(aero.source_file);
 else
@@ -83,6 +93,19 @@ else
     m.aero.note = '合成测试系数（非物理气动数据），不得用于物理验证';
 end
 
+end
+
+% ===========================================================================
+function digest = aero_content_sha256(aero)
+%AERO_CONTENT_SHA256 对气动系数内容（非路径）计算稳定 SHA256。
+% 同一文件放在不同目录时 spline 系数/有效域相同，摘要相同；修改系数或
+% 有效域则摘要改变。source_file 不参与。
+payload = struct( ...
+    'dt', aero.dt, 'dn', aero.dn, 'dm', aero.dm, ...
+    'wl', aero.wl, 'wd', aero.wd, 'wm', aero.wm, ...
+    'duct_domain_rad', aero.duct_domain_rad, ...
+    'wing_domain_rad', aero.wing_domain_rad);
+digest = aero_sha256_text(aero_canonical_json(payload));
 end
 
 % ===========================================================================

@@ -153,7 +153,7 @@ cfg = aero_validate_config(cfg);
 definition.components = aero_experiment_components(cfg.components);
 definitionPayload = struct('schema', 'aero-experiment-definition/1', ...
     'definition', definition);
-definitionHash = aero_sha256_text(jsonencode(definitionPayload));
+definitionHash = aero_sha256_text(aero_canonical_json(definitionPayload));
 experiment = struct();
 experiment.schema = 'aero-experiment-definition/1';
 experiment.definition = definition;

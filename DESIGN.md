@@ -213,7 +213,7 @@ B_acc = J_frd⁻¹ · B_tau
 - Communication：Latest-Value Topic Bus（注册、发布、读取、契约校验、可用/过期/时间倒退处理、
   真值隔离），V1.0 始终启用；结果快照、有界发布日志与边界校验已补齐。
 - GNC-Baseline：Position P、Velocity PID、Attitude P、Rate PID 四级独立控制器 + 独立 PINV
-  分配；两个闭环场景与 WTR 导出。全项目共 40 项测试（详见 §15）。
+  分配；两个闭环场景与 WTR 导出。全项目共 42 项测试（详见 §15）。
 
 **未实现 / 依赖外部条件**
 
@@ -528,6 +528,13 @@ cfg.experiment
 - Controller 回调从 `definition.controllers` 派生，禁止另造一套用于签名的 gains。
 - `definition_sha256` 只覆盖 schema+definition；`identity_sha256` 覆盖定义、
   `result.config` 的运行字段和 `result.model_metadata`，用于拒绝仿真后的配置篡改。
+- 身份哈希使用递归规范化序列化：struct 字段排序、数组/cell 元素顺序保持、
+  数值维度显式编码、NaN/Inf 显式处理、函数句柄拒绝。模型快照进入哈希前移除
+  本地 `aero.source_file`，但保留 provenance/trust/file SHA/content SHA/有效域；
+  synthetic fixture 也有基于实际样条内容的 content SHA。
+- `result.model_metadata.state_layout` 保存完整索引
+  （nx/position/velocity/quaternion/omega/servo/motor/units/description）；
+  WTR 从结果快照恢复布局，并校验调用者 model 的布局与此一致。
 - `result.config` 保存 tspan/x0/solver/seed/environment/组件调度/通信配置；
   `result.model_metadata` 保存机型、质量/惯量、气动来源/trust/SHA、执行器与 trim。
 - 三者分层保存，不合并为一个巨大结构体，也不新增 `result.experiment` 副本。
@@ -535,6 +542,9 @@ cfg.experiment
   导出前校验 schema、定义/身份 SHA、active_modules、组件、模型快照和日志完整性。
 - `simulation.mat` 是权威原始结果；`flight.wtr` 从它派生，manifest 的
   `input_signature` 使用 `identity_sha256`，`source.log_sha256` 关联实际 MAT。
+- MATLAB version/release/computer/git commit/git dirty 写入 WTR 的
+  `source.software` 与参数快照，但不进入实验输入签名；dirty 源码必须标记
+  commit SHA 不能单独保证精确复现。
 - 导出失败不得删除 MAT 或留下半成品；禁止覆盖已有 MAT/WTR。
 
 ### 15.8 限制
