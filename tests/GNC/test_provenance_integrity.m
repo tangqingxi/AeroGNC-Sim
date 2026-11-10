@@ -139,6 +139,22 @@ end
 report = wtr_validate(out.wtr_path);
 check_that(report.passed, '含 software 来源的 WTR v1 校验失败');
 
+% dirty 源码必须明确标记不可仅凭 commit 精确复现
+dirtyResult = result;
+dirtyResult.environment.git_dirty = true;
+dirtyRoot = tempname();
+cleanupDirty = onCleanup(@() remove_tree(dirtyRoot)); %#ok<NASGU>
+dirtyOut = wtr_export(dirtyResult, sf1.model, struct('output_root', dirtyRoot));
+dirtyManifest = load_manifest(dirtyOut.wtr_path);
+check_that(logical(dirtyManifest.source.software.git_dirty), ...
+    'dirty 标志未写入 manifest');
+check_that(isfield(dirtyManifest.source.software, 'reproducibility_note') ...
+    && contains(dirtyManifest.source.software.reproducibility_note, 'dirty'), ...
+    'dirty 源码未标记不可精确复现');
+dirtyPaths = parameter_paths(dirtyOut.wtr_path);
+check_that(any(strcmp(dirtyPaths, 'software.reproducibility_note')), ...
+    'dirty 参数快照缺少 reproducibility_note');
+
 info = struct('passed', true, 'summary', sprintf( ...
     '跨路径/内容身份、fixture、state_layout、software 来源通过；content=%s', ...
     sf1.model.metadata.aero.content_sha256(1:12)));
