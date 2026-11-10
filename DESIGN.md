@@ -213,7 +213,7 @@ B_acc = J_frd⁻¹ · B_tau
 - Communication：Latest-Value Topic Bus（注册、发布、读取、契约校验、可用/过期/时间倒退处理、
   真值隔离），V1.0 始终启用；结果快照、有界发布日志与边界校验已补齐。
 - GNC-Baseline：Position P、Velocity PID、Attitude P、Rate PID 四级独立控制器 + 独立 PINV
-  分配；两个闭环场景与 WTR 导出。全项目共 38 项测试（详见 §15）。
+  分配；两个闭环场景与 WTR 导出。全项目共 39 项测试（详见 §15）。
 
 **未实现 / 依赖外部条件**
 
@@ -429,9 +429,12 @@ src/Scenarios/            hover_scenario、rate_step_scenario（仅装配）
   参数归 Position，无积分状态。
 - **Velocity PID**：`a_cmd = a_ff + Kp_vel·e_v + I_vel − Kd_vel·a_est`；
   `a_est` 来自 `navigation/state.acceleration`（测量差分，非 Aircraft 真值）；
-  `Kd` 为无量纲（输出与输入均 m/s²）。垂直积分在 PID 前钳位到 ±g；垂直推力
-  到上/下限时按 PX4 语义冻结对应误差；水平方向使用 Tracking Anti-Windup
-  （`2/Kp_x`）；总推力、最小推力、水平推力余量和最大倾角共同约束控制需求。
+  `Kd` 为无量纲（输出与输入均 m/s²）。默认 `MPC_ACC_DECOUPLE=1`：
+  `z_b=[−a_x,−a_y,g]/‖·‖`，垂直加速度只改变推力；PX4 hover-thrust 的 SI 映射
+  `T=T_hover·(1−a_z/g)/cos`，`T_hover=trim.thrust_n`，不直接复制 PX4
+  `MPC_THR_HOVER`。垂直积分 PID 前钳位 ±g；垂直推力到上/下限时冻结对应误差；
+  水平余量取 `min(实际水平需求, T_margin)`，垂直优先；Tracking AW 使用最终
+  受限水平推力；最终受限力矢量同时决定 q 与 T，最大倾角/总推力不再与姿态脱节。
 - **Attitude P**：PX4 默认 reduced-attitude 误差（`quat_error_default`），
   `yaw_weight` 缩放偏航误差并在偏航增益侧补偿；`ω_ref = Kp_att·e + ω_yaw_rate
   + ω_ref_model`；`ω_yaw_rate` 由世界系 yaw_rate 旋转到参考机体系；参考模型为

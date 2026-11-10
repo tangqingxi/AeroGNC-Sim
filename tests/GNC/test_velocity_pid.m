@@ -10,7 +10,7 @@ gains.Ki = [0.1; 0.1; 0.3];
 gains.Kd = [0.5; 0.5; 0.5];
 gains.integral_limit = [5; 5; 5];
 
-params = make_params(gains, 1000, 5, 300, deg2rad(45));
+params = make_params(gains, 1000, 5, 300, deg2rad(45), trim.thrust_n);
 bus = make_bus(trim);
 
 nav = struct('position', [0; 0; 0], 'velocity', [0; 0; 0], ...
@@ -38,7 +38,7 @@ check_that(abs(attitude.data.yaw - 0) < 1e-12 && abs(attitude.data.yaw_rate) < 1
 cleanBus = make_bus(trim);
 cleanGains = gains;
 cleanGains.Kd = [0; 0; 0];
-cleanParams = make_params(cleanGains, 1000, 5, 300, deg2rad(45));
+cleanParams = make_params(cleanGains, 1000, 5, 300, deg2rad(45), trim.thrust_n);
 cleanBus.topics.publish('navigation/state', nav, 0, 0, 0, 'test');
 cleanBus.topics.publish('control/velocity_setpoint', setpoint, 0, 0, 0, 'test');
 cleanBus = velocity_pid(0, cleanBus, cleanParams);
@@ -56,7 +56,7 @@ check_that(abs(bus.control_state.velocity.integral(3)) <= p.gravity_m_s2 + 1e-12
 
 % Tracking Anti-Windup：总推力饱和时应修正水平误差，积分不应继续正增长
 satBus = make_bus(trim);
-satParams = make_params(gains, 10, 1, 0, deg2rad(45));
+satParams = make_params(gains, 10, 1, 0, deg2rad(45), trim.thrust_n);
 satSetpoint = struct('velocity', [5; 0; 0], 'acceleration_ff', [0; 0; 0], ...
     'yaw', 0, 'yaw_rate', 0);
 satBus.topics.publish('navigation/state', nav, 0, 0, 0, 'test');
@@ -75,13 +75,14 @@ info = struct('passed', true, 'summary', sprintf( ...
 end
 
 % ===========================================================================
-function params = make_params(gains, maxThrust, minThrust, margin, maxTilt)
+function params = make_params(gains, maxThrust, minThrust, margin, maxTilt, hoverThrust)
 params = struct('nav_topic', 'navigation/state', ...
     'setpoint_topic', 'control/velocity_setpoint', ...
     'output_topic', 'control/attitude_setpoint', ...
     'velocity', gains, ...
     'max_thrust_n', maxThrust, 'min_thrust_n', minThrust, ...
     'horizontal_thrust_margin_n', margin, 'max_tilt_rad', maxTilt, ...
+    'hover_thrust_n', hoverThrust, ...
     'mass_kg', 2.1, 'gravity_m_s2', 9.788, ...
     'rates', struct('velocity_hz', 100));
 end
