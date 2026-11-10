@@ -30,8 +30,8 @@ SHC09 是第一个完整机型实例，不是平台的唯一对象。
 | `src/Simulation/` | 虚拟时钟、事件调度、分段 `ode45`、指令锁存、测量发布、Topic 通信、日志、结果持久化 | 任何机型气动、设备型号、控制算法 |
 | `src/Aircraft/<TYPE>/` | 整机装配、质量惯量、几何、气动、完整动力学、状态定义、标准输出 | 通用设备动态、控制算法、场景 |
 | `src/Components/` | 可复用设备型号参数与通用设备动力学 | 安装位置、通道编号、机型专属效能、控制器参数 |
-| `src/GNC/` | Guidance / Navigation / Control 与可替换分配（GNC-Baseline 已实现基础链） | 物理对象、场景 |
-| `src/Scenarios/`（未实现） | 任务、环境、初始条件、实验配置 | 物理模型、控制算法 |
+| `src/GNC/` | Guidance、Navigation 与四级 Control（Position/Velocity/Attitude/Rate）+ Allocation | 物理对象、场景 |
+| `src/Scenarios/` | 任务、参考条件与组件装配 | 物理模型、控制算法 |
 
 ## 3. Aircraft 与 Components 的组合关系
 
@@ -209,17 +209,17 @@ B_acc = J_frd⁻¹ · B_tau
   与两个设备型号参数。
 - SHC09 20 状态非线性六自由度模型：刚体、涵道、机翼、六舵面、陀螺、反扭矩、风扰。
 - 悬停配平（不依赖气动表，检查非对称生效行程上下界）、几何/效能/动力学/执行器/停机状态/
-  指令独立性/输出语义/元数据/集成/目录治理测试，共 23 项。
+  指令独立性/输出语义/元数据/集成/目录治理测试。
 - Communication：Latest-Value Topic Bus（注册、发布、读取、契约校验、可用/过期/时间倒退处理、
   真值隔离），V1.0 始终启用；结果快照、有界发布日志与边界校验已补齐。
-- GNC-Baseline：位置 P / 速度 PID / 姿态 P / 角速度 PID + PINV 分配，两个闭环场景与
-  WTR 导出；全项目共 31 项测试（详见 §15）。
+- GNC-Baseline：Position P、Velocity PID、Attitude P、Rate PID 四级独立控制器 + 独立 PINV
+  分配；两个闭环场景与 WTR 导出。全项目共 37 项测试（详见 §15）。
 
 **未实现 / 依赖外部条件**
 
 - SHC09 真实气动系数表：再分发许可未确认，真实表不入库；物理气动验证依赖用户提供数据文件。
   外部文件默认 `trust='unverified'`，只有显式 `verified` 才允许物理验证；合成系数固定 `synthetic`。
-- Guidance、Navigation、Control、控制分配、场景库、传感器模型。
+- 高级 GNC（INDI、MPC、复杂分配）、真实传感器模型与传感器噪声、EKF2/ECL、场景库扩展。
 - 二阶/辨识/非线性执行器 mode。
 - 实机参数辨识（惯量、舵机 τ/速率、电机 τ/转速范围仍为参考值或名义值）。
 
@@ -253,12 +253,17 @@ AeroGNC-Sim/
 │   │   ├── Aerodynamics/          涵道、机翼、舵面、系数表、力/力矩合成
 │   │   └── Internal/              状态布局、投影、四元数、元数据、命令解析
 │   ├── GNC/
-│   │   ├── Guidance/              悬停位置参考、角速度阶跃参考
-│   │   ├── Navigation/            IdealState 测试适配器
-│   │   └── Control/               位置/速度/姿态/角速度环、PINV 分配、锁存
-│   │       └── Internal/          四元数、推力矢量、契约、默认参数
-│   ├── Scenarios/                 两类闭环场景装配
-│   │   └── Internal/              场景配置构建、SHC09 理想传感器
+│   │   ├── Guidance/              hover_hold、body_rate_step
+│   │   ├── Navigation/            ideal_state（IdealState 适配器）
+│   │   └── Control/
+│   │       ├── Position/          position_p
+│   │       ├── Velocity/          velocity_pid
+│   │       ├── Attitude/          attitude_p
+│   │       ├── Rate/              rate_pid
+│   │       ├── Allocation/        pinv_allocator
+│   │       └── Internal/          control_defaults、topic_specs、四元数/推力辅助
+│   ├── Scenarios/                 hover_scenario、rate_step_scenario
+│   │   └── Internal/              build_config、experiment_signature、ideal_sensor_sample、latch_*
 │   └── Components/Actuators/{Servo,Motor}/
 │       ├── aero_*_dynamics.m      通用动力学（不绑定品牌）
 │       └── +<Class>Devices/+<MODEL>/parameters.m
@@ -269,8 +274,8 @@ AeroGNC-Sim/
 │   ├── fixtures/                  测试替身（生产路径不加载）
 │   ├── Simulation/{Core,Events,Communication,Results}/
 │   ├── Aircraft/SHC09/
-│   ├── GNC/                       控制数学、角速度闭环、悬停闭环
-│   ├── Export/WTR/                导出契约与覆盖保护
+│   ├── GNC/                       四级控制器单元、链路、多速率、两类场景
+│   ├── Export/WTR/                导出契约、锁存时间轴与覆盖保护
 │   └── test_project_layout.m      目录、入口、重复定义检查
 ├── examples/
 └── results/                       gitignore
@@ -290,7 +295,7 @@ AeroGNC-Sim/
 | 新设备动力学类别 | `src/Components/Actuators/<Class>/` 下的通用函数 |
 | Guidance 参考生成 | `src/GNC/Guidance/` |
 | Navigation 估计适配器 | `src/GNC/Navigation/` |
-| 控制律/分配 | `src/GNC/Control/`，纯数学辅助放 `Control/Internal/` |
+| 控制律/分配 | 四级控制分别放 `src/GNC/Control/{Position,Velocity,Attitude,Rate}/`；`Allocation/` 独立；纯数学辅助放 `Control/Internal/` |
 | 场景装配 | `src/Scenarios/`，共享构建放 `Scenarios/Internal/` |
 | 离线导出工具 | `tools/wtr/`（不得被 Simulation 依赖） |
 | 新测试 | `tests/Simulation/{Core,Events,Results}/`、`tests/Aircraft/<TYPE>/`、`tests/GNC/` 或 `tests/Export/` |
@@ -391,76 +396,106 @@ message.source             可选的来源标识
 5. 仅在 MATLAB R2025b 下验证了快照 `.mat` 保存/加载；不承诺跨 MATLAB 版本兼容。
 6. 传感器采样必须有 Topic 契约；V1.0 不支持“无 Topic 的旁路测量”。
 
-## 15. GNC-Baseline 控制链与 WTR 导出
+## 15. GNC 四级控制器与 WTR 导出
 
-参考：`mengchaoheng/DuctedFanUAV-Autopilot` @ `2eb33667575619b02a2d9b52032df2fac7fb5291`
-（`df-main`）与 `tangqingxi/Ducted-Fan-SHC09-matlab` @ `43b6c7aef1912f8118e54d3decac1ac55465d5b1`。
-PX4 的归一化力矩/推力增益不直接搬用；本平台全部控制量使用 SI 单位。
+参考：`mengchaoheng/DuctedFanUAV-Autopilot` @ `2eb3366757…`（`df-main`）与
+`tangqingxi/Ducted-Fan-SHC09-matlab` @ `43b6c7ae…`、WindTrace @ `bcdb6a8e…`。
+PX4 归一化力矩/推力增益不直接搬用；平台控制量全部使用 SI 单位。
 
-### 15.1 Topic 数据链
-
-| Topic | 发布者 | 订阅者 | 主要字段（SI） |
-|---|---|---|---|
-| `sensor/state` | SHC09 理想传感器（采样回调） | Navigation | `value`=[p;v;q;ω]、`sample_time_s` |
-| `navigation/state` | IdealState 适配器 | 位置/姿态/角速度环 | p、v、q、ω、α、`ideal=1` |
-| `guidance/reference` | HoverHold | 位置环 | p、v、a、yaw、yaw_rate |
-| `guidance/rate_reference` | BodyRate Step | 角速度环（角速度模式） | ω、α |
-| `control/attitude_setpoint` | 位置环 | 姿态环、分配器 | q、thrust_n |
-| `control/rate_setpoint` | 姿态环 | 角速度环 | ω、α |
-| `control/torque_setpoint` | 角速度环 | 分配器 | torque（N·m） |
-| `control/allocation_status` | PINV 分配 | 日志/诊断 | δ、achieved、residual、saturated、motor、Ve_nom |
-
-`bus.command` / `bus.held_command` 仍由内核锁存：Control 写计算命令，200 Hz 舵面锁存与
-50 Hz 电机锁存分别复制字段；GNC 模块之间只经 Topic 交换数据。
-
-### 15.2 控制律（PX4 语义的 SI 适配）
-
-- 位置 P：`v_cmd = v_ff + Kp_pos·(p_ref − p)`，水平速度限幅。
-- 速度 PID：`a_cmd = a_ff + Kp_vel·e_v + I_vel − Kd_vel·a_meas`；I 限幅并按加速度饱和冻结。
-- 推力矢量：`F = m(a_cmd − g_ned)`，`T=|F|`，`z_b = −F/|F|`，倾角限制后由 yaw 构造
-  `R_des=[x_b,y_b,z_b]` 与 `q_des`。
-- 姿态 P：`e = 2·vec(q⁻¹⊗q_d)`，`ω_cmd = Kp_att·e + ω_ff`，限幅。
-- 角速度 PID：`τ = Kp_rate·(ω_cmd−ω) + I_rate + Kff·ω_cmd − Kd_rate·α_meas`；
-  I 限幅，并按分配器上一拍的饱和方向冻结积分。
-- 分配：`δ = δ_trim + pinv(B_tau)·τ`，`B_tau = d_cs·Ve²·diag([l1,l1,l2])·B_M`；
-  δ 限幅到生效行程，残差反馈给角速度环。`Ve` 由**指令推力**按名义涵道模型计算，
-  不读取真实瞬时出口流速；电机转速由 `Ω=sqrt(T/k_T0)` 独立给出。
-
-### 15.3 Navigation 与真值边界
-
-`gnc_ideal_state_step` 只读 `sensor/state`，发布 `navigation/state` 并置 `ideal=1`；
-角加速度由相邻测量差分并限幅。它是**真值派生的测试适配器**，不是 EKF 或传感器融合结果。
-周期组件无法访问 Aircraft 状态；真值只经 Sensor 的 `sample(t,x)` 回调进入。
-
-### 15.4 多速率
-
-Sensor/Navigation/Rate/Allocation 400 Hz；Attitude 200 Hz；Position 100 Hz；
-Guidance 50 Hz；舵面锁存 200 Hz；电机锁存 50 Hz。周期均由配置声明，内核不硬编码。
-
-### 15.5 WTR 导出
-
-`tools/wtr/wtr_export` 从**已启用的有界 Topic 发布日志**（要求 `dropped==0`）与
-`result.state/time` 构造 `windtrace.flight.v1`，输出：
+### 15.1 四级独立目录与职责
 
 ```text
-results/<scenario>/<run_id>/simulation.mat   权威原始结果
-results/<scenario>/<run_id>/flight.wtr       派生可视化（不覆盖、不替代原始数据）
+src/GNC/
+├── Guidance/            hover_hold、body_rate_step（只给参考，不做追踪）
+├── Navigation/          ideal_state（IdealState 测试适配器，非 EKF）
+└── Control/
+    ├── Position/        position_p     位置 P → 速度参考
+    ├── Velocity/        velocity_pid   速度 PID → 姿态/推力
+    ├── Attitude/        attitude_p     姿态 P → 机体系角速度参考
+    ├── Rate/            rate_pid       角速度 PID → 力矩需求
+    ├── Allocation/      pinv_allocator 六舵面 PINV + 电机推力
+    └── Internal/        control_defaults、topic_specs、四元数/推力辅助
+src/Scenarios/            hover_scenario、rate_step_scenario（仅装配）
 ```
 
-- 估计/参考/控制量使用各自源采样时钟；真值单独 topic；不做跨 Topic 插值；
-- 不伪造缺失传感器历史；IdealState 与“锁存指令作为舵面估计”在 `source` 中显式标注；
-- 容器含 manifest/parameters/flight.mat/geometry.json，成员 SHA256、微秒时间戳、
-  四元数归一化与六舵面几何由 `wtr_validate` 和 WindTrace 读取器独立校验；
-- 导出失败只清理本次临时文件，不删除已有 `.mat`/`.wtr`。
+命名规则：目录表达领域，文件名表达职责和算法；不再使用 `gnc_` 前缀。
+四级控制器是四个独立组件，各自拥有参数、状态、频率与单元测试；Allocation
+独立可替换，不得把四级数学重新合并到一个函数。
 
-### 15.6 场景
+### 15.2 控制律与单位
 
-- `gnc_rate_step_scenario`：单轴角速度阶跃，仅内环 + 分配 + 执行器，验证方向/时延/耦合。
-- `gnc_hover_scenario`：初始位置偏差下的悬停位置保持，完整四环 + 分配 + 锁存。
+- **Position P**：`v_ref = v_ff + Kp_pos·(p_ref − p_est)`，水平/垂直限幅；无积分状态。
+- **Velocity PID**：`a_cmd = a_ff + Kp_vel·e_v + I_vel − Kd_vel·a_est`；积分限幅、
+  按加速度输出饱和冻结；`a_est` 来自 `navigation/state.acceleration`（测量差分，
+  非 Aircraft 真值）；D 为测量加速度反馈，单位 s。
+- **Attitude P**：`e = 2·vec(q⁻¹⊗q_d)`，`ω_ref = Kp_att·e + ω_ff`；`ω_ff` 单位 rad/s；
+  角加速度前馈（rad/s²）不得直接加到角速度上，当前输出 `alpha_ff=0`。
+- **Rate PID**：`τ = Kp_rate·e_rate + I_rate + Kff·ω_ref − Kd_rate·α_est`；积分限幅、
+  力矩限幅；抗饱和只从 `control/allocation_status.saturated` 读取，不访问分配器内部状态。
+- **PINV**：`B_tau = d_cs·Ve²·diag([l1,l1,l2])·B_M`（N·m/rad），
+  `δ = δ_trim + pinv(B_tau)·τ_d`；`τ_d` 是**相对配平的力矩增量**，零力矩回到配平；
+  `residual = τ_d − B_tau·(δ−δ_trim)`，`saturated=sign(residual)`（限幅内为 0）。
+  电机 `Ω=sqrt(T/k_T0)` 独立求解，六舵面与电机不混成七维分配。
+
+### 15.3 Topic 契约
+
+| Topic | 发布者 | 订阅者 | 字段（SI） |
+|---|---|---|---|
+| `sensor/state` | 理想传感器 | Navigation | `value`=[p;v;q;ω]、`sample_time_s` |
+| `navigation/state` | IdealState | 四级控制器 | p、v、a、q、ω、α、`ideal=1` |
+| `guidance/reference` | HoverHold | Position | p、v、a、yaw、yaw_rate |
+| `guidance/rate_reference` | BodyRate | Rate | ω、α |
+| `control/velocity_setpoint` | Position | Velocity | `velocity`、`acceleration_ff` |
+| `control/attitude_setpoint` | Velocity | Attitude、Allocation | q、`thrust_n` |
+| `control/rate_setpoint` | Attitude | Rate | ω、α |
+| `control/torque_setpoint` | Rate | Allocation | `torque` |
+| `control/allocation_status` | Allocation | Rate、诊断 | δ、achieved、residual、saturated、motor、Ve_nom |
+
+总线与契约由 `src/GNC/Control/Internal/topic_specs.m` 唯一定义；不得建立包含
+所有控制器变量的“大结构体”或第二套通信入口。
+
+### 15.4 组合与状态
+
+Guidance 的参考类型决定启用链：
+
+| 参考类型 | 启用模块 |
+|---|---|
+| Position | Position → Velocity → Attitude → Rate → Allocation |
+| Velocity | Velocity → Attitude → Rate → Allocation |
+| Attitude | Attitude → Rate → Allocation |
+| BodyRate | Rate → Allocation |
+
+当前 V1.0 只实现 Position（HoverHold）与 BodyRate（阶跃）两种 Guidance；
+Velocity/Attitude 参考组合由同一组四级组件按需装配，不虚构额外制导算法。
+
+每个控制器只读写自己的 `bus.control_state.<level>`（velocity/rate 有积分状态，
+position/attitude 无状态）；跨模块数据只能经 Topic，不得用这些状态字段传值，
+也不得修改 Simulation 内核。
+
+### 15.5 频率与顺序
+
+默认：Position 100 Hz、Velocity 100 Hz（可独立配置）、Attitude 200 Hz、
+Rate 400 Hz、Allocation 400 Hz、舵面锁存 200 Hz、电机锁存 50 Hz。
+同一时刻执行顺序：position → velocity → attitude → rate → allocation → latches；
+下游只读取已发布的上游输出，不发生未来数据泄漏。
+
+### 15.6 WTR 导出
+
+`tools/wtr/wtr_export` 从完整 Topic 日志（要求 `dropped==0`）与 `result.state` 生成
+`windtrace.flight.v1`：
+
+- `actuator_servos_pwm` 使用真实 `latch_servos` 事件时刻，`actuator_motors_pwm`
+  使用 `latch_motor` 事件时刻；不使用状态输出时间轴，不插值；
+- manifest 的实验签名覆盖场景、参考、方法、种子、机型版本、完整增益、求解器、
+  时间区间、气动来源/可信等级/SHA256、参数覆盖与组件频率；
+- 参数记录机型/环境/气动/执行器/四级增益与限幅/PINV/频率/求解器/场景；
+  未知值不填默认，名义值不标实测；
+- `.wtr` 复用 `aero_results_path`、`aero_results_check`，临时 ZIP 位于目标 Results
+  目录同一文件系统，容量检查后原子改名；拒绝覆盖 `.mat`/`.wtr`，失败不删除权威 `.mat`。
 
 ### 15.7 限制
 
-1. 控制增益为仿真名义值，未经实机辨识；PX4 前馈、参考模型与 INDI 未实现（明确固定纯 PID 基线）。
-2. 真实气动数据许可未闭合，fixture 为全零合成表；闭环结果只证明软件通路与数值稳定性，
-   **不构成物理闭环验证**。
-3. `result.measurements` 随仿真时间增长；WTR 依赖有界日志，长时实验需设置 `max_records` 并检查 `dropped`。
+1. 增益为仿真名义值；未实机辨识，未做鲁棒性/蒙特卡洛评估。
+2. 气动为合成 fixture，物理闭环验收 **BLOCKED**；不得表述为真实气动或实机验证。
+3. Navigation 为 IdealState，无传感器噪声/偏置；加速度由测量差分得到。
+4. 未实现 INDI/MPC/CA16/参考模型/增益调度；WTR 固定 v1 协议。

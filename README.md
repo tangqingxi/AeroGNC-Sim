@@ -24,8 +24,8 @@
 - 结果记录模型元数据（版本、质量、惯量、设备型号、生效参数、覆盖值与气动数据 SHA256）。
 - 通信：V1.0 始终使用单一 Latest-Value Topic Bus；Sensor 在测量可用时刻发布，
   计算命令与锁存命令使用独立 Topic，结果保存普通值快照，可选有界发布日志（仅分析用）。
-- GNC：位置 P + 速度 PID + 姿态 P + 角速度 PID，六舵面 PINV 分配与独立电机推力；
-  悬停位置保持与单轴角速度阶跃两个场景。控制量全部 SI 单位，PX4 归一化增益经重新换算。
+- GNC：Position P、Velocity PID、Attitude P、Rate PID 四级独立控制器（各自目录/参数/状态/
+  频率），独立 PINV 六舵面分配与电机推力；悬停位置保持与单轴角速度阶跃两个场景。
 - WTR 导出：把一次仿真导出为 WindTrace `windtrace.flight.v1`（`.wtr`），
   原始 `simulation.mat` 与可视化文件同目录保存。
 
@@ -83,16 +83,15 @@ V1.0 始终使用单一 Topic Bus。`cfg.communication.topics` 注册 Topic 契�
 ```matlab
 aero_setup();
 source = struct('type', 'external', 'file', 'path/to/shc09_aero.mat');
-s = gnc_hover_scenario(struct('aero_source', source, 'tspan', [0, 4]));
+s = hover_scenario(struct('aero_source', source, 'tspan', [0, 4]));
 result = aero_sim(s.model, s.cfg);
 
 out = wtr_export(result, s.model, struct( ...
-    'scenario', s.name, 'signature', struct('tspan', s.cfg.tspan), ...
-    'gains', s.gains));
+    'scenario', s.name, 'signature', s.signature, 'gains', s.gains));
 % out.wtr_path 可直接在 WindTrace 中打开
 ```
 
-`gnc_rate_step_scenario` 提供单轴角速度阶跃。WTR 导出要求发布日志完整
+`rate_step_scenario` 提供单轴角速度阶跃。WTR 导出要求发布日志完整
 （`dropped==0`）；脚本会先写 `simulation.mat`，再写 `flight.wtr`，拒绝覆盖已有文件。
 真实气动数据缺失时，`fixture` 只能验证软件通路，不能作为物理闭环结论。
 
@@ -102,8 +101,8 @@ out = wtr_export(result, s.model, struct( ...
 matlab -batch "run('tests/run_tests.m')"
 ```
 
-覆盖内核 14 项 + SHC09/Components/接口/目录治理 9 项 + Communication 4 项 + GNC 3 项 +
-WTR 1 项，共 31 项。SHC09 气动的
+覆盖内核 14 项 + SHC09/Components/接口/目录治理 9 项 + Communication 4 项 + GNC 9 项 +
+WTR 1 项，共 37 项。SHC09 气动的
 **物理验证依赖外部数据**：结构测试使用 `tests/fixtures/shc09_aero_fixture.m` 中
 明确标注的合成系数（全零气动表），只验证代码通路、符号与积分，不代表气动性能。
 

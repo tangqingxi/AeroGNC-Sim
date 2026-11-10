@@ -50,7 +50,9 @@
 | `src/Simulation/Communication/` | Topic 总线与数据契约（Latest-Value，不含时钟/调度） |
 | `src/Aircraft/SHC09/` | 首个机型：装配、参数、气动、动力学、状态与输出 |
 | `src/Components/Actuators/Servo/`、`.../Motor/` | 通用执行器动力学与设备型号参数（MATLAB 包） |
-| `src/GNC/`、`src/Scenarios/`、`src/Sensors/` | **尚未实现**；不预建空目录，实现时再建并登记 `aero_setup.m` |
+| `src/GNC/` | 已实现：Guidance、Navigation 与四级 Control（Position/Velocity/Attitude/Rate）+ Allocation |
+| `src/Scenarios/` | 已实现：实验参考/组件装配（不含控制律） |
+| `src/Sensors/` | **尚未实现**；不预建空目录，实现时再建并登记 `aero_setup.m` |
 | `tests/` | 回归测试与测试入口 `run_tests.m` |
 | `tests/fixtures/` | 解析测试模型与明确标注的测试替身（不是正式飞行器或真实气动数据） |
 | `examples/` | 可直接运行的最小示例 |
@@ -63,6 +65,9 @@
   通用执行器动力学不得出现品牌判断，设备型号参数不得包含机型装配信息。
 - 通信：V1.0 始终启用唯一 Topic Bus，只做 Latest-Value 传递，不实现时钟或调度；
   Simulation 持有唯一实例，禁止建立第二套并行 Bus；普通 Topic 不得承载 GroundTruth。
+- 控制：Position/Velocity/Attitude/Rate 四级必须保持独立目录、函数、参数、状态与频率；
+  Allocation 独立可替换；禁止把四级控制律重新合并到一个函数或用 `bus` 自定义字段跨级传值。
+- 命名：目录表达领域，文件名表达职责和算法；GNC/Scenario 生产函数不再使用 `gnc_` 前缀。
 
 ### 5.2 可读性
 
