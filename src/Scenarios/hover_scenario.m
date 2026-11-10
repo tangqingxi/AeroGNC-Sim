@@ -1,8 +1,8 @@
-function s = gnc_hover_scenario(options)
-%GNC_HOVER_SCENARIO 构建 SHC09 悬停位置保持闭环场景
+function s = hover_scenario(options)
+%HOVER_SCENARIO 构建 SHC09 悬停位置保持闭环场景
 %
 % 用法：
-%   s = gnc_hover_scenario(struct('aero_source', fixture));
+%   s = hover_scenario(struct('aero_source', fixture));
 %   result = aero_sim(s.model, s.cfg);
 %
 % 选项（全部可选）：
@@ -12,7 +12,7 @@ function s = gnc_hover_scenario(options)
 %   position_offset   初始位置偏差（NED，默认 [0;0;0]）
 %   reference_position 目标位置（NED，默认原点）
 %   yaw               目标偏航（rad，默认 0）
-%   gains             控制参数（默认 gnc_control_defaults）
+%   gains             控制参数（默认 control_defaults）
 %   max_records       发布日志容量（默认 300000）
 %
 % 输出 s：name/model/cfg/gains/mode，可直接交给 aero_sim。
@@ -31,7 +31,7 @@ model = shc09_model(struct( ...
 
 gains = options.gains;
 
-cfg = gnc_build_config(model, 'hover', struct( ...
+cfg = build_config(model, 'hover', struct( ...
     'tspan', options.tspan, ...
     'position_offset', options.position_offset, ...
     'reference_position', options.reference_position, ...
@@ -40,7 +40,7 @@ cfg = gnc_build_config(model, 'hover', struct( ...
     'max_records', options.max_records));
 
 s = struct();
-s.name = 'gnc_hover_hold';
+s.name = 'hover_hold';
 s.mode = 'hover';
 s.model = model;
 s.cfg = cfg;
@@ -48,6 +48,7 @@ s.gains = gains;
 s.trim = model.trim;
 s.reference = struct('position', options.reference_position(:), ...
     'velocity', zeros(3, 1), 'acceleration', zeros(3, 1), 'yaw', options.yaw);
+s.signature = experiment_signature(s.name, cfg, model, gains, s.reference);
 
 end
 
@@ -63,7 +64,7 @@ defaults = struct( ...
     'position_offset', zeros(3, 1), ...
     'reference_position', zeros(3, 1), ...
     'yaw', 0, ...
-    'gains', gnc_control_defaults(), ...
+    'gains', control_defaults(), ...
     'max_records', 300000);
 names = fieldnames(defaults);
 for k = 1:numel(names)

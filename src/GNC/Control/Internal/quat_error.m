@@ -1,5 +1,5 @@
-function e = gnc_quat_error(q, q_desired)
-%GNC_QUAT_ERROR 机体四元数姿态误差（标量在前，Hamilton 约定）
+function e = quat_error(q, q_desired)
+%QUAT_ERROR 机体四元数姿态误差（标量在前，Hamilton 约定）
 %
 % 输入：
 %   q         - 当前 q_bn（机体系到 NED，4×1）

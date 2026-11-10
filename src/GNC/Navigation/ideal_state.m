@@ -1,17 +1,18 @@
-function bus = gnc_ideal_state_step(t, bus, params)
-%GNC_IDEAL_STATE_STEP IdealState 测试导航适配器
+function bus = ideal_state(t, bus, params)
+%IDEAL_STATE IdealState 测试导航适配器
 %
 % 输入：
 %   t      - 当前仿真时间（s）
 %   bus    - 内核总线（含 bus.topics）
-%   params - struct：sensor_topic、output_topic、alpha_limit
+%   params - sensor_topic、output_topic、acceleration_limit
 %
-% 行为：
-%   从 sensor/state 读取最新可用测量，按 PX4 风格输出 StateEstimate 到
-%   navigation/state。位置/速度/四元数原样传递（这是 IdealState 假设，
-%   不是 EKF）；角加速度由相邻测量差分得到并限幅。
+% 输出 navigation/state：
+%   position、velocity（原样）、acceleration（相邻速度差分）、quaternion、
+%   omega、alpha（相邻角速度差分）、sample_time_s、ideal=1。
 %
-% 真值隔离：本函数只读 Topic，不接触任何真实状态或 Aircraft 内部字段。
+% 平动/角加速度都由**本适配器**根据测量时间差估计，并显式标记为理想
+% 估计；控制器不读取 Aircraft 真实加速度。该适配器不是 EKF，也不是
+% 真实传感器融合结果。
 
 if ~isfield(bus, 'topics')
     error('gnc:nav:topics', 'bus.topics 缺失，GNC 必须通过 Topic Bus 通信');
@@ -35,26 +36,29 @@ if quaternion(1) < 0
     quaternion = -quaternion;
 end
 
-if ~isfield(bus, 'gnc')
-    bus.gnc = struct();
-end
-% 角加速度：相邻测量差分；首个样本置零
+acceleration = zeros(3, 1);
 alpha = zeros(3, 1);
-if isfield(bus, 'gnc') && isfield(bus.gnc, 'navigation')
-    previous = bus.gnc.navigation;
+if isfield(bus, 'navigation_state')
+    previous = bus.navigation_state;
     dt = msg.data.sample_time_s - previous.sample_time;
     if dt > 1e-9
+        acceleration = (velocity - previous.velocity) / dt;
         alpha = (omega - previous.omega) / dt;
-        limit = params.alpha_limit;
+        limit = params.acceleration_limit;
+        acceleration = min(max(acceleration, -limit), limit);
         alpha = min(max(alpha, -limit), limit);
     end
 end
 
-bus.gnc.navigation = struct('sample_time', msg.data.sample_time_s, 'omega', omega);
+bus.navigation_state = struct( ...
+    'sample_time', msg.data.sample_time_s, ...
+    'velocity', velocity, ...
+    'omega', omega);
 
 payload = struct( ...
     'position', position, ...
     'velocity', velocity, ...
+    'acceleration', acceleration, ...
     'quaternion', quaternion, ...
     'omega', omega, ...
     'alpha', alpha, ...

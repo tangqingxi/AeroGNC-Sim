@@ -1,5 +1,5 @@
-function q = gnc_rotation_to_quat(R)
-%GNC_ROTATION_TO_QUAT 旋转矩阵转四元数（标量在前，Hamilton）
+function q = rotation_to_quat(R)
+%ROTATION_TO_QUAT 旋转矩阵转四元数（标量在前，Hamilton）
 %
 % 使用 Shepperd 分支：比较迹与三个对角元，选择数值最稳定的分支，
 % 避免 θ≈π 时直接除以小量。

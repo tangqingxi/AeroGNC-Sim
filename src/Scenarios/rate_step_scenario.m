@@ -1,8 +1,8 @@
-function s = gnc_rate_step_scenario(options)
-%GNC_RATE_STEP_SCENARIO 构建 SHC09 单轴角速度阶跃场景
+function s = rate_step_scenario(options)
+%RATE_STEP_SCENARIO 构建 SHC09 单轴角速度阶跃场景
 %
 % 用法：
-%   s = gnc_rate_step_scenario(struct('aero_source', fixture));
+%   s = rate_step_scenario(struct('aero_source', fixture));
 %   result = aero_sim(s.model, s.cfg);
 %
 % 选项（全部可选）：
@@ -26,7 +26,7 @@ model = shc09_model(struct( ...
     'aero_domain_policy', options.aero_domain_policy));
 gains = options.gains;
 
-cfg = gnc_build_config(model, 'rate', struct( ...
+cfg = build_config(model, 'rate', struct( ...
     'tspan', options.tspan, ...
     'axis', options.axis, ...
     'amplitude', options.amplitude, ...
@@ -36,7 +36,7 @@ cfg = gnc_build_config(model, 'rate', struct( ...
     'max_records', options.max_records));
 
 s = struct();
-s.name = 'gnc_body_rate_step';
+s.name = 'rate_step';
 s.mode = 'rate';
 s.model = model;
 s.cfg = cfg;
@@ -44,6 +44,7 @@ s.gains = gains;
 s.trim = model.trim;
 s.command = struct('axis', options.axis, 'amplitude', options.amplitude, ...
     'start_s', options.start_s, 'end_s', options.end_s);
+s.signature = experiment_signature(s.name, cfg, model, gains, s.command);
 
 end
 
@@ -60,7 +61,7 @@ defaults = struct( ...
     'start_s', 0.5, ...
     'end_s', 1.5, ...
     'tspan', [0, 2.5], ...
-    'gains', gnc_control_defaults(), ...
+    'gains', control_defaults(), ...
     'max_records', 200000);
 names = fieldnames(defaults);
 for k = 1:numel(names)

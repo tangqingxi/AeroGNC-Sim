@@ -1,5 +1,5 @@
-function R = gnc_quat_to_rotation(q)
-%GNC_QUAT_TO_ROTATION 四元数（标量在前，Hamilton）转旋转矩阵
+function R = quat_to_rotation(q)
+%QUAT_TO_ROTATION 四元数（标量在前，Hamilton）转旋转矩阵
 %
 % q 表示从机体系 FRD 到 NED 的旋转：v_n = R * v_b。
 % 输入不要求严格单位化，内部归一化；零四元数直接报错。

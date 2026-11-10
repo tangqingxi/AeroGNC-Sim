@@ -1,8 +1,8 @@
-function info = test_gnc_rate_step()
-%TEST_GNC_RATE_STEP 角速度闭环方向、跟踪与命令锁存独立性
+function info = test_rate_step()
+%TEST_RATE_STEP 角速度闭环方向、跟踪与命令锁存独立性
 
 source = struct('type', 'fixture', 'tables', shc09_aero_fixture());
-scenario = gnc_rate_step_scenario(struct( ...
+scenario = rate_step_scenario(struct( ...
     'aero_source', source, ...
     'tspan', [0, 1.2], ...
     'max_records', 60000));
@@ -15,17 +15,16 @@ omega = result.state(:, layout.omega);
 check_that(result.stats.events > 1000, '事件数异常：%d', result.stats.events);
 check_that(result.communication.log.dropped == 0, '发布日志发生丢弃');
 
-beforeStep = abs(t - 0.3) < 1e-12;
+beforeStep = nearest_index(t, 0.3);
 check_that(max(abs(omega(beforeStep, :))) < 0.02, ...
     '阶跃前存在非零角速度：%s', mat2str(omega(beforeStep, :), 4));
 
-atTracking = abs(t - 1.0) < 1e-12;
+atTracking = nearest_index(t, 1.0);
 check_that(abs(omega(atTracking, 1) - 0.5) < 0.05, ...
     '滚转角速度跟踪误差过大：%.4f', omega(atTracking, 1));
 check_that(abs(omega(atTracking, 2)) < 0.05, '滚转阶跃引起过大俯仰耦合');
 check_that(abs(omega(atTracking, 3)) < 0.08, '滚转阶跃引起过大偏航耦合');
 
-% 计算命令与实际锁存命令独立：至少存在一个时刻二者不同
 different = false;
 for g = 1:numel(result.held)
     if ~isequaln(result.computed{g}, result.held{g})
@@ -35,14 +34,12 @@ for g = 1:numel(result.held)
 end
 check_that(different, '计算命令与锁存命令始终相同，锁存未生效');
 
-% WTR 导出与独立校验（临时结果根，避免污染项目 results/）
 root = tempname();
 cleanup = onCleanup(@() remove_tree(root)); %#ok<NASGU>
-signature = struct('scenario', scenario.name, 'tspan', scenario.cfg.tspan, ...
-    'gains', scenario.gains, 'model_version', scenario.model.version);
 out = wtr_export(result, scenario.model, struct( ...
     'scenario', scenario.name, 'output_root', root, ...
-    'signature', signature, 'gains', scenario.gains, 'seed', scenario.cfg.seed));
+    'signature', scenario.signature, 'gains', scenario.gains, ...
+    'seed', scenario.cfg.seed));
 check_that(isfile(out.mat_path) && isfile(out.wtr_path), '导出文件缺失');
 report = wtr_validate(out.wtr_path);
 check_that(report.passed && report.topic_count >= 12, ...
@@ -55,6 +52,10 @@ info = struct('passed', true, 'summary', sprintf( ...
 end
 
 % ===========================================================================
+function index = nearest_index(t, target)
+[~, index] = min(abs(t - target));
+end
+
 function remove_tree(path)
 if isfolder(path)
     rmdir(path, 's');

@@ -85,7 +85,7 @@ end
 % ---- 5. 写容器 -------------------------------------------------------
 stage = tempname();
 mkdir(stage);
-zipTmp = [tempname(), '.zip'];
+zipTmp = fullfile(directory, unique_temp_name('.zip'));
 cleanup = onCleanup(@() clean_stage(stage, zipTmp)); %#ok<NASGU>
 
 flight = struct();
@@ -123,7 +123,9 @@ manifest.source = struct( ...
     'input_signature', signatureHash, ...
     'input_signature_scope', 'scenario+config+gain signature', ...
     'records', struct('navigation', 'IdealState（真值派生的测试适配器，非 EKF）', ...
-        'actuator_estimate', '锁存指令，非舵面反馈估计'));
+        'actuator_estimate', '锁存指令，非舵面反馈估计', ...
+        'aero_trust', model.metadata.aero.trust, ...
+        'aero_file_sha256', model.metadata.aero.file_sha256));
 manifest.exporter = struct('name', 'AeroGNC-Sim wtr_export', 'version', '1.0.0');
 manifest.topics = specs;
 manifest.missing_topics = {};
@@ -131,6 +133,22 @@ manifest.members = members;
 write_text(fullfile(stage, 'manifest.json'), wtr_json(manifest));
 
 zip(zipTmp, {'manifest.json', 'parameters.json', 'flight.mat', 'geometry.json'}, stage);
+entry = dir(zipTmp);
+incoming = 0;
+if ~isempty(entry)
+    incoming = entry(1).bytes;
+end
+policy = aero_results_policy();
+if ~isempty(options.policy)
+    policy = options.policy;
+end
+capacity = aero_results_check(outputRoot, policy, incoming, zipTmp);
+if strcmp(capacity.status, 'limit')
+    error('wtr:export:limit', '%s', capacity.message);
+end
+if any(strcmp(capacity.status, {'warning', 'file-warning', 'file-limit'}))
+    warning('wtr:export:capacity', '%s', capacity.message);
+end
 if isfile(wtrPath)
     error('wtr:export:exists', 'WTR 在写入期间出现，拒绝覆盖：%s', wtrPath);
 end
@@ -159,7 +177,7 @@ defaults = struct( ...
     'method', 'P_PID_P_PID_PINV', ...
     'seed', 0, ...
     'run_id', '', ...
-    'save_simulation', true);
+    'save_simulation', true, 'policy', []);
 names = fieldnames(defaults);
 for k = 1:numel(names)
     if ~isfield(options, names{k})
@@ -204,5 +222,14 @@ if condition
     value = a;
 else
     value = b;
+end
+end
+
+% ===========================================================================
+function name = unique_temp_name(extension)
+try
+    name = ['.aero-tmp-' char(java.util.UUID.randomUUID()) extension];
+catch
+    name = ['.aero-tmp-' num2str(randi(1e9)) extension];
 end
 end

@@ -1,6 +1,6 @@
-function [q_desired, thrust_n, z_body] = gnc_thrust_to_attitude( ...
+function [q_desired, thrust_n, z_body] = thrust_to_attitude( ...
     acceleration_ned, yaw_rad, mass_kg, gravity_m_s2, max_tilt_rad)
-%GNC_THRUST_TO_ATTITUDE 由期望加速度构造推力矢量、姿态与总推力
+%THRUST_TO_ATTITUDE 由期望加速度构造推力矢量、姿态与总推力
 %
 % 输入（NED / FRD，SI）：
 %   acceleration_ned - 期望平动加速度（m/s²，含重力补偿语义）
@@ -68,7 +68,7 @@ x_body = x_body / norm(x_body);
 y_body = cross(z_body, x_body);
 
 R_desired = [x_body, y_body, z_body];
-q_desired = gnc_rotation_to_quat(R_desired);
+q_desired = rotation_to_quat(R_desired);
 thrust_n = force_norm;
 
 end

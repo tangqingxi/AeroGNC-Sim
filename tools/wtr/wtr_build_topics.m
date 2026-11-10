@@ -58,12 +58,18 @@ else
     rateRefSource = 'guidance/rate_reference';
 end
 
-% 锁存舵面（PWM 命令），与真值同结果时钟
-held = result.held;
+% 锁存舵面：使用真实 latch_servos 事件时刻，不使用状态输出时间轴
+latchServoTimes = latch_event_times(result, 'latch_servos');
+latchMotorTimes = latch_event_times(result, 'latch_motor');
+heldServosAtLatch = held_values(result, latchServoTimes, 'servos');
+heldMotorAtLatch = held_values(result, latchMotorTimes, 'motor');
+
+% 状态时间轴上的锁存命令用于 shc09_vanes 的 estimated 对照（零阶保持，
+% 不做插值）。这是“指令”而非舵面反馈估计，manifest 中已标注来源。
 heldServos = zeros(numel(truthTime), 6);
 for k = 1:numel(truthTime)
-    if ~isempty(held{k}) && isstruct(held{k}) && isfield(held{k}, 'servos')
-        heldServos(k, :) = held{k}.servos(:).';
+    if ~isempty(result.held{k}) && isstruct(result.held{k}) && isfield(result.held{k}, 'servos')
+        heldServos(k, :) = result.held{k}.servos(:).';
     end
 end
 
@@ -138,9 +144,13 @@ specs = struct();
         'actual', unit('rad', 'result.state delta'), ...
         'estimated', unit('rad', 'latched command (ideal actuator assumption, not feedback)')));
 
-[topics, specs] = add_topic(topics, specs, 'actuator_servos_pwm', truthTime, ...
-    struct('command_rad', heldServos), 'pwm_latched', '1-6', struct( ...
-        'command_rad', unit('rad', 'result.held servos')));
+[topics, specs] = add_topic(topics, specs, 'actuator_servos_pwm', latchServoTimes, ...
+    struct('command_rad', heldServosAtLatch), 'pwm_latched', '1-6', struct( ...
+        'command_rad', unit('rad', 'latch_servos event held command')));
+
+[topics, specs] = add_topic(topics, specs, 'actuator_motors_pwm', latchMotorTimes, ...
+    struct('motor_rad_s', heldMotorAtLatch), 'pwm_latched', 'motor', struct( ...
+        'motor_rad_s', unit('rad/s', 'latch_motor event held command')));
 
 end
 
@@ -261,4 +271,34 @@ end
 q = q ./ norms;
 negative = q(:, 1) < 0;
 q(negative, :) = -q(negative, :);
+end
+
+% ===========================================================================
+function times = latch_event_times(result, componentName)
+components = {result.events.component};
+actions = {result.events.action};
+mask = strcmp(components, componentName) & strcmp(actions, 'step');
+times = unique([result.events(mask).time].');
+if numel(times) < 2
+    error('wtr:export:latch', '缺少 %s 的锁存事件', componentName);
+end
+end
+
+function values = held_values(result, times, field)
+if strcmp(field, 'servos')
+    values = zeros(numel(times), 6);
+else
+    values = zeros(numel(times), 1);
+end
+for k = 1:numel(times)
+    [~, g] = min(abs(result.time - times(k)));
+    held = result.held{g};
+    if ~isempty(held) && isstruct(held) && isfield(held, field)
+        if strcmp(field, 'servos')
+            values(k, :) = held.servos(:).';
+        else
+            values(k) = held.motor;
+        end
+    end
+end
 end
