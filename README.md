@@ -10,25 +10,40 @@ SHC09 涵道式尾座无人机是平台的首个完整机型，但平台本身�
 ## 1. 系统总体架构
 
 ```text
-Guidance（参考生成）
-        ↓
-Navigation（状态估计）
-        ↓
-Control
-├── Position
-├── Velocity
-├── Attitude
-├── Rate
-└── Allocation
-        ↓
-Aircraft（完整机型动力学） + Components（舵机/电机动态）
-        ↓
-Simulation（调度、锁存、数值积分）
-        ↓
-Results（原始结果与发布日志）
-        ↓
-WTR（派生可视化数据） → WindTrace
+                Simulation Kernel
+     (Clock / Scheduler / Integrator / Topic Bus)
+
+          ┌──────────────┴──────────────┐
+          │                             │
+      Guidance                      Navigation
+          │ Reference                   │ StateEstimate
+          └──────────────┬──────────────┘
+                         ▼
+                      Control
+              ┌──────────┼──────────┐
+              │          │          │
+          Position   Velocity   Attitude / Rate
+              └──────────┼──────────┘
+                         ▼
+                    Allocation
+                         │
+                 Command / Latch
+                         ▼
+              Aircraft + Components
+                         │
+                    State Evolution
+                         │
+                 Feedback / Sensors
+                         │
+                  Results（日志）
+                         │
+                 WTR → WindTrace
 ```
+
+Guidance 与 Navigation 是**并列数据源**：Control 同时订阅 `guidance/reference`
+与 `navigation/state`，不是先 Guidance 再 Navigation 的串行链。Simulation 是
+整个闭环的运行环境，负责时钟、事件调度、锁存、积分和 Topic Bus；不是数据流
+中的一个下游模块。
 
 职责边界：
 
