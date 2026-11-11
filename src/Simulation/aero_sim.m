@@ -31,6 +31,9 @@ if nargin < 2
     cfg = struct();
 end
 
+% 在运行入口固定软件来源，避免回调修改源码后把结束状态误记为开始状态。
+environmentInfo = aero_env_info();
+
 % ---- 1. 配置与模型校验 ------------------------------------------------
 cfg = aero_fill_defaults(cfg, aero_default_config());
 model = validate_model(model);
@@ -260,7 +263,7 @@ result.config = cfg;
 if isfield(model, 'metadata') && isstruct(model.metadata)
     result.model_metadata = model.metadata;
 end
-result.environment = aero_env_info();
+result.environment = environmentInfo;
 result.seed = cfg.seed;
 result.stats = struct( ...
     'groups', nGroups, ...

@@ -7,18 +7,15 @@ function info = aero_env_info()
 %   git_commit / git_dirty                    - DEV 提交与工作区状态（尽力获取）
 %
 % 说明：git 信息用于把结果关联到具体提交；git 不可用时字段为 'unknown'/false，
-% 不阻塞仿真。结果在同一 MATLAB 会话内缓存，避免重复调用外部进程。
+% 不阻塞仿真。仅缓存 MATLAB 与平台信息；每次调用重新查询 Git 来源。
 
 persistent cached
-if ~isempty(cached)
-    info = cached;
-    return;
+if isempty(cached)
+    cached = struct('matlab_version', version, ...
+        'matlab_release', version('-release'), 'computer', computer);
 end
 
-info = struct();
-info.matlab_version = version;
-info.matlab_release = version('-release');
-info.computer = computer;
+info = cached;
 info.project_root = aero_project_root();
 info.git_commit = 'unknown';
 info.git_dirty = false;
@@ -27,12 +24,10 @@ root = info.project_root;
 [status, out] = system(sprintf('git -C "%s" rev-parse HEAD', root));
 if status == 0
     info.git_commit = strtrim(out);
-    [status2, out2] = system(sprintf('git -C "%s" status --porcelain', root));
-    if status2 == 0 && ~isempty(strtrim(out2))
-        info.git_dirty = true;
-    end
 end
-
-cached = info;
+[status2, out2] = system(sprintf('git -C "%s" status --porcelain', root));
+if status2 == 0 && ~isempty(strtrim(out2))
+    info.git_dirty = true;
+end
 
 end

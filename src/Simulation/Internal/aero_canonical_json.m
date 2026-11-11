@@ -4,7 +4,7 @@ function text = aero_canonical_json(value)
 % 规则：
 %   - struct 字段按字母排序；struct 数组元素顺序保持；
 %   - cell 元素顺序保持；
-%   - 数值/逻辑保留维度：{"type":"numeric","dims":[r,c],"data":[...]}；
+%   - 数值/逻辑保留完整维度：{"type":"numeric","dims":[d1,d2,...],"data":[...]}；
 %   - NaN/Inf 写成字符串，不静默转 0；
 %   - 函数句柄/对象/未知类型直接报错；实验定义不得含此类值；
 %   - 字符串按 JSON 转义；数值按 %.17g。
@@ -73,12 +73,9 @@ out = ['{', strjoin(parts, ','), '}'];
 end
 
 function out = typed_array(kind, value)
-if isempty(value)
-    out = ['{"type":"', kind, '","dims":[', num2str(size(value, 1)), ',', ...
-        num2str(size(value, 2)), '],"data":[]}'];
-    return;
-end
 dims = size(value);
+% size 保留 MATLAB 可区分的全部维度，包括空数组的非尾部单例维度。
+dimParts = arrayfun(@(d) sprintf('%d', d), dims, 'UniformOutput', false);
 data = value(:);
 parts = cell(1, numel(data));
 for k = 1:numel(data)
@@ -95,8 +92,8 @@ for k = 1:numel(data)
         end
     end
 end
-out = ['{"type":"', kind, '","dims":[', num2str(dims(1)), ',', ...
-    num2str(dims(2)), '],"data":[', strjoin(parts, ','), ']}'];
+out = ['{"type":"', kind, '","dims":[', strjoin(dimParts, ','), ...
+    '],"data":[', strjoin(parts, ','), ']}'];
 end
 
 function out = escape(text)

@@ -43,6 +43,9 @@ add('vehicle.motor_latch_rate_hz', p.motor_latch_rate_hz, 'Hz', 'model_metadata'
 add('aero.source_type', m.aero.source_type, '-', 'model_metadata.aero');
 add('aero.trust', m.aero.trust, '-', 'model_metadata.aero');
 add('aero.file_sha256', m.aero.file_sha256, '-', 'model_metadata.aero');
+add('aero.content_sha256', m.aero.content_sha256, '-', 'model_metadata.aero');
+add('aero.duct_domain_rad', m.aero.duct_domain_rad, 'rad', 'model_metadata.aero');
+add('aero.wing_domain_rad', m.aero.wing_domain_rad, 'rad', 'model_metadata.aero');
 add('aero.physical_validation_allowed', ...
     double(m.aero.physical_validation_allowed), '1', 'model_metadata.aero');
 
