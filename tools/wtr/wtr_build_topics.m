@@ -19,6 +19,7 @@ truthDelta = state(:, layout.servo);
 
 nav = require_topic(log, 'navigation/state');
 [navTime, navPos, navVel, navQ, navOmega, navAlpha] = unpack_nav(nav);
+attitudeRefLog = optional_topic(log, 'guidance/attitude_reference');
 
 rateLog = optional_topic(log, 'control/rate_setpoint');
 if isempty(rateLog)
@@ -42,25 +43,36 @@ else
     refPosition = zeros(numel(rateTime), 3);
     refVelocity = zeros(numel(rateTime), 3);
     refAcceleration = zeros(numel(rateTime), 3);
-    refSource = 'not_applicable (rate-only scenario)';
+    if ~isempty(attitudeRefLog)
+        refSource = 'not_applicable (attitude-only scenario; no position/velocity reference)';
+    else
+        refSource = 'not_applicable (rate-only scenario)';
+    end
     refPositionSource = refSource;
 end
 
 attitudeSetpoint = optional_topic(log, 'control/attitude_setpoint');
-if isempty(attitudeSetpoint)
+if ~isempty(attitudeSetpoint)
+    [attitudeTime, attitudeQ] = unpack_attitude_setpoint(attitudeSetpoint);
+    attitudeSource = 'control/attitude_setpoint';
+elseif ~isempty(attitudeRefLog)
+    [attitudeTime, attitudeQ] = unpack_attitude_reference(attitudeRefLog);
+    attitudeSource = 'guidance/attitude_reference (attitude-only scenario)';
+else
     attitudeTime = rateTime;
     attitudeQ = repmat([1, 0, 0, 0], numel(rateTime), 1);
     attitudeSource = 'not_applicable (rate-only scenario; identity reference)';
-else
-    [attitudeTime, attitudeQ] = unpack_attitude_setpoint(attitudeSetpoint);
-    attitudeSource = 'control/attitude_setpoint';
 end
 
 rateRefLog = optional_topic(log, 'guidance/rate_reference');
 if isempty(rateRefLog)
     rateRefTime = rateTime;
     rateRefOmega = zeros(numel(rateTime), 3);
-    rateRefSource = 'not_applicable (hover scenario; zero rate reference)';
+    if ~isempty(attitudeRefLog)
+        rateRefSource = 'not_applicable (attitude-only scenario; no direct rate reference)';
+    else
+        rateRefSource = 'not_applicable (hover scenario; zero rate reference)';
+    end
 else
     [rateRefTime, rateRefOmega, ~] = unpack_rates(rateRefLog);
     rateRefSource = 'guidance/rate_reference';
@@ -270,6 +282,15 @@ for k = 1:n
     if isfield(d, 'alpha')
         alpha(k, :) = d.alpha(:).';
     end
+end
+end
+
+function [t, quaternion] = unpack_attitude_reference(recs)
+n = numel(recs);
+t = zeros(n, 1); quaternion = zeros(n, 4);
+for k = 1:n
+    t(k) = recs{k}.sample_time_s;
+    quaternion(k, :) = normalize_rows(recs{k}.data.quaternion(:).');
 end
 end
 

@@ -87,6 +87,7 @@ AeroGNC-Sim/
 │   │   ├── Guidance/
 │   │   │   ├── hover_hold.m        位置保持参考
 │   │   │   ├── velocity_step.m     独立速度阶跃参考
+│   │   │   ├── attitude_step.m     独立姿态阶跃参考
 │   │   │   └── body_rate_step.m    角速度阶跃参考
 │   │   ├── Navigation/
 │   │   │   └── ideal_state.m       IdealState 测试适配器（非 EKF）
@@ -100,6 +101,7 @@ AeroGNC-Sim/
 │   └── Scenarios/
 │       ├── hover_scenario.m        悬停位置保持场景
 │       ├── velocity_step_scenario.m 独立速度参考场景
+│       ├── attitude_step_scenario.m 独立姿态参考场景
 │       ├── rate_step_scenario.m    角速度阶跃场景
 │       └── Internal/               配置构建、实验定义/身份、传感器、锁存
 ├── tools/wtr/                      WTR 导出、校验、JSON/SHA/几何辅助
@@ -135,7 +137,7 @@ AeroGNC-Sim/
 | Allocation | `src/GNC/Control/Allocation/pinv_allocator.m` | 六舵面 PINV 与电机独立推力 |
 | Topic 契约 | `src/GNC/Control/Internal/topic_specs.m` | 字段、维度、单位、超时 |
 | 控制默认参数 | `src/GNC/Control/Internal/control_defaults.m` | 四级控制器与分配默认值 |
-| Guidance | `src/GNC/Guidance/` | 位置/速度/角速度参考生成 |
+| Guidance | `src/GNC/Guidance/` | 位置/速度/姿态/角速度参考生成 |
 | Navigation | `src/GNC/Navigation/ideal_state.m` | IdealState 估计适配器 |
 | 场景装配 | `src/Scenarios/` | 组件、Topic、初值、频率组装 |
 | 实验定义 | `src/Scenarios/Internal/experiment_definition.m` | 唯一有效参数、参考、active modules |
@@ -266,7 +268,37 @@ Guidance velocity_step
 该场景不装配 Position P；速度参考由 Guidance 直接发布，Velocity PID 直接订阅。
 速度回到零不代表位置回到原点，不能用悬停位置保持指标评价。
 
-### 6.6 导出 WTR
+### 6.6 运行姿态阶跃（Attitude Reference）
+
+```matlab
+source = struct('type', 'fixture', 'tables', shc09_aero_fixture());
+s = attitude_step_scenario(struct( ...
+    'aero_source', source, ...
+    'roll_rad', deg2rad(5), ...
+    'pitch_rad', 0, ...
+    'yaw_rad', 0, ...
+    'start_s', 0.5, ...
+    'end_s', 1.5, ...
+    'tspan', [0, 3]));
+result = aero_sim(s.model, s.cfg);
+```
+
+实际控制链：
+
+```text
+Guidance attitude_step
+  → guidance/attitude_reference
+  → Attitude P
+  → Rate PID
+  → PINV Allocation
+  → SHC09
+```
+
+该场景不装配 Position 和 Velocity；Attitude P 直接读取 Guidance 姿态参考。
+推力是固定参考（默认 `trim.thrust_n`），不是推力控制算法。姿态倾斜会产生
+平动加速度和位置漂移，这是预期物理行为。
+
+### 6.7 导出 WTR
 
 ```matlab
 out = wtr_export(result, s.model, struct('output_root', 'results'));
@@ -280,7 +312,7 @@ out = wtr_export(result, s.model, struct('output_root', 'results'));
 导出要求发布日志完整（`dropped==0`）；`.wtr` 是派生可视化数据，权威原始数据
 是同一目录的 `simulation.mat`。
 
-### 6.7 实验配置与结果追溯
+### 6.8 实验配置与结果追溯
 
 ```text
 Scenario
@@ -314,7 +346,7 @@ WindTrace
 - `simulation.mat` 是权威原始结果，`flight.wtr` 是派生的可视化交付；导出失败
   不删除原始 MAT，也不覆盖已有文件。
 
-### 6.8 运行测试
+### 6.9 运行测试
 
 ```matlab
 matlab -batch "run('tests/run_tests.m')"
@@ -349,7 +381,7 @@ results/<scenario>/<run_id>/
 | SHC09 机型 | 已实现：六自由度、涵道/机翼/舵面、执行器、悬停配平 |
 | 四级 GNC | 已实现：Position P、Velocity PID、Attitude P、Rate PID |
 | 控制分配 | 已实现：六舵面 PINV、配平、限幅、饱和/残差、电机独立推力 |
-| 闭环场景 | 已实现：HoverHold、Velocity Step、BodyRate Step |
+| 闭环场景 | 已实现：HoverHold、Velocity Step、Attitude Step、BodyRate Step |
 | 导航 | 已实现：IdealState 测试适配器 |
 | WTR | 已实现：v1 导出、契约校验、锁存时间轴、参数追溯 |
 | 真实气动 | 未完成：数据许可/物理有效性未闭合；fixture 不是物理验证 |
@@ -363,8 +395,8 @@ results/<scenario>/<run_id>/
 | Reference | 状态 |
 |---|---|
 | Position | 已实现（HoverHold） |
-| Velocity | 本轮新增（Velocity Step） |
-| Attitude | 待实现 |
+| Velocity | 已实现（Velocity Step） |
+| Attitude | 本轮新增（Attitude Step） |
 | BodyRate | 已实现（BodyRate Step） |
 
 物理验证状态：**BLOCKED**。合成气动 fixture 只能证明软件链路、数值稳定性和

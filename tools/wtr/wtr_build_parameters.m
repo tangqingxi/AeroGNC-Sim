@@ -174,6 +174,15 @@ switch guidance.type
         add('experiment.reference.yaw_rate_rad_s', guidance.yaw_rate_rad_s, 'rad/s', 'experiment.definition.guidance');
         add('experiment.reference.start_s', guidance.start_s, 's', 'experiment.definition.guidance');
         add('experiment.reference.end_s', guidance.end_s, 's', 'experiment.definition.guidance');
+    case 'AttitudeStep'
+        add('experiment.reference.roll_rad', guidance.roll_rad, 'rad', 'experiment.definition.guidance');
+        add('experiment.reference.pitch_rad', guidance.pitch_rad, 'rad', 'experiment.definition.guidance');
+        add('experiment.reference.yaw_rad', guidance.yaw_rad, 'rad', 'experiment.definition.guidance');
+        add('experiment.reference.quaternion_bn', guidance.quaternion_bn, '1', 'experiment.definition.guidance');
+        add('experiment.reference.thrust_reference_n', guidance.thrust_reference_n, 'N', 'experiment.definition.guidance');
+        add('experiment.reference.yaw_rate_rad_s', guidance.yaw_rate_rad_s, 'rad/s', 'experiment.definition.guidance');
+        add('experiment.reference.start_s', guidance.start_s, 's', 'experiment.definition.guidance');
+        add('experiment.reference.end_s', guidance.end_s, 's', 'experiment.definition.guidance');
     case 'BodyRateStep'
         add('experiment.reference.axis', guidance.axis, '1', 'experiment.definition.guidance');
         add('experiment.reference.amplitude', guidance.amplitude_rad_s, 'rad/s', 'experiment.definition.guidance');
