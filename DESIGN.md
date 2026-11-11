@@ -213,7 +213,8 @@ B_acc = J_frd⁻¹ · B_tau
 - Communication：Latest-Value Topic Bus（注册、发布、读取、契约校验、可用/过期/时间倒退处理、
   真值隔离），V1.0 始终启用；结果快照、有界发布日志与边界校验已补齐。
 - GNC-Baseline：Position P、Velocity PID、Attitude P、Rate PID 四级独立控制器 + 独立 PINV
-  分配；两个闭环场景与 WTR 导出。全项目共 42 项测试（详见 §15）。
+  分配；三个闭环场景（HoverHold、Velocity Step、BodyRate Step）与 WTR 导出。
+全项目共 48 项测试（详见 §15）。
 
 **未实现 / 依赖外部条件**
 
@@ -262,7 +263,7 @@ AeroGNC-Sim/
 │   │       ├── Rate/              rate_pid
 │   │       ├── Allocation/        pinv_allocator
 │   │       └── Internal/          control_defaults、topic_specs、四元数/推力辅助
-│   ├── Scenarios/                 hover_scenario、rate_step_scenario
+│   ├── Scenarios/                 hover_scenario、velocity_step_scenario、rate_step_scenario
 │   │   └── Internal/              build_config、experiment_definition、aero_experiment_identity、ideal_sensor_sample、latch_*
 │   └── Components/Actuators/{Servo,Motor}/
 │       ├── aero_*_dynamics.m      通用动力学（不绑定品牌）
@@ -274,7 +275,7 @@ AeroGNC-Sim/
 │   ├── fixtures/                  测试替身（生产路径不加载）
 │   ├── Simulation/{Core,Events,Communication,Results}/
 │   ├── Aircraft/SHC09/
-│   ├── GNC/                       四级控制器单元、链路、多速率、两类场景
+│   ├── GNC/                       四级控制器单元、链路、多速率、三类场景
 │   ├── Export/WTR/                导出契约、锁存时间轴与覆盖保护
 │   └── test_project_layout.m      目录、入口、重复定义检查
 ├── examples/
@@ -456,6 +457,7 @@ src/Scenarios/            hover_scenario、rate_step_scenario（仅装配）
 | `sensor/state` | 理想传感器 | Navigation | `value`=[p;v;q;ω]、`sample_time_s` |
 | `navigation/state` | IdealState | 四级控制器 | p、v、a、q、ω、α、`ideal=1` |
 | `guidance/reference` | HoverHold | Position | p、v、a、yaw、yaw_rate |
+| `guidance/velocity_reference` | Velocity Step | Velocity | `velocity`、`acceleration_ff`、yaw、yaw_rate |
 | `guidance/rate_reference` | BodyRate | Rate | ω、α |
 | `control/velocity_setpoint` | Position | Velocity | `velocity`、`acceleration_ff`、`yaw`、`yaw_rate` |
 | `control/attitude_setpoint` | Velocity | Attitude、Allocation | q、`thrust_n`、`yaw`、`yaw_rate` |
@@ -477,8 +479,9 @@ Guidance 的参考类型决定启用链：
 | Attitude | Attitude → Rate → Allocation |
 | BodyRate | Rate → Allocation |
 
-当前 V1.0 只实现 Position（HoverHold）与 BodyRate（阶跃）两种 Guidance；
-Velocity/Attitude 参考组合由同一组四级组件按需装配，不虚构额外制导算法。
+当前 V1.0 实现 Position（HoverHold）、Velocity（Velocity Step）与 BodyRate（阶跃）
+三种 Guidance；Attitude 参考仍待实现。Velocity 场景不装配 Position，Velocity PID
+直接订阅 `guidance/velocity_reference`，其余下游组件复用。
 
 每个控制器只读写自己的 `bus.control_state.<level>`（velocity/rate 有积分状态，
 attitude 有参考模型状态，position 无状态）；跨模块数据只能经 Topic，不得用这些
@@ -488,8 +491,8 @@ attitude 有参考模型状态，position 无状态）；跨模块数据只能�
 
 默认：Position 100 Hz、Velocity 100 Hz（可独立配置）、Attitude 200 Hz、
 Rate 400 Hz、Allocation 400 Hz、舵面锁存 200 Hz、电机锁存 50 Hz。
-同一时刻执行顺序：position → velocity → attitude → rate → allocation → latches；
-下游只读取已发布的上游输出，不发生未来数据泄漏。
+同一时刻执行顺序：position（若启用）→ velocity → attitude → rate → allocation
+→ latches；下游只读取已发布的上游输出，不发生未来数据泄漏。
 
 ### 15.6 WTR 导出
 

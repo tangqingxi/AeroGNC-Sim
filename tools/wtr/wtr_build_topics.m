@@ -27,15 +27,23 @@ end
 [rateTime, rateOmega, rateAlpha] = unpack_rates(rateLog);
 
 refLog = optional_topic(log, 'guidance/reference');
-if isempty(refLog)
+velRefLog = optional_topic(log, 'guidance/velocity_reference');
+if ~isempty(refLog)
+    [refTime, refPosition, refVelocity, refAcceleration] = unpack_reference(refLog);
+    refSource = 'guidance/reference';
+    refPositionSource = refSource;
+elseif ~isempty(velRefLog)
+    [refTime, refVelocity, refAcceleration] = unpack_velocity_reference(velRefLog);
+    refPosition = zeros(numel(refTime), 3);
+    refSource = 'guidance/velocity_reference';
+    refPositionSource = 'not_applicable (velocity-only scenario; no position reference)';
+else
     refTime = rateTime;
     refPosition = zeros(numel(rateTime), 3);
     refVelocity = zeros(numel(rateTime), 3);
     refAcceleration = zeros(numel(rateTime), 3);
     refSource = 'not_applicable (rate-only scenario)';
-else
-    [refTime, refPosition, refVelocity, refAcceleration] = unpack_reference(refLog);
-    refSource = 'guidance/reference';
+    refPositionSource = refSource;
 end
 
 attitudeSetpoint = optional_topic(log, 'control/attitude_setpoint');
@@ -45,7 +53,7 @@ if isempty(attitudeSetpoint)
     attitudeSource = 'not_applicable (rate-only scenario; identity reference)';
 else
     [attitudeTime, attitudeQ] = unpack_attitude_setpoint(attitudeSetpoint);
-    attitudeSource = 'control/attitude_setpoint (position loop)';
+    attitudeSource = 'control/attitude_setpoint';
 end
 
 rateRefLog = optional_topic(log, 'guidance/rate_reference');
@@ -107,7 +115,7 @@ specs = struct();
 [topics, specs] = add_topic(topics, specs, 'trajectory_setpoint', refTime, ...
     struct('position', refPosition, 'velocity', refVelocity, ...
            'acceleration', refAcceleration), 'reference', 'NED', struct( ...
-        'position', unit('m', refSource), 'velocity', unit('m/s', refSource), ...
+        'position', unit('m', refPositionSource), 'velocity', unit('m/s', refSource), ...
         'acceleration', unit('m/s^2', refSource)));
 
 [topics, specs] = add_topic(topics, specs, 'vehicle_attitude_reference', attitudeTime, ...
@@ -238,6 +246,17 @@ for k = 1:n
     position(k, :) = d.position(:).';
     velocity(k, :) = d.velocity(:).';
     acceleration(k, :) = d.acceleration(:).';
+end
+end
+
+function [t, velocity, acceleration] = unpack_velocity_reference(recs)
+n = numel(recs);
+t = zeros(n, 1); velocity = zeros(n, 3); acceleration = zeros(n, 3);
+for k = 1:n
+    d = recs{k}.data;
+    t(k) = recs{k}.sample_time_s;
+    velocity(k, :) = d.velocity(:).';
+    acceleration(k, :) = d.acceleration_ff(:).';
 end
 end
 

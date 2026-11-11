@@ -165,6 +165,15 @@ switch guidance.type
         add('experiment.reference.acceleration', guidance.acceleration_m_s2, 'm/s^2', 'experiment.definition.guidance');
         add('experiment.reference.yaw', guidance.yaw_rad, 'rad', 'experiment.definition.guidance');
         add('experiment.reference.yaw_rate', guidance.yaw_rate_rad_s, 'rad/s', 'experiment.definition.guidance');
+    case 'VelocityStep'
+        add('experiment.reference.velocity_reference_ned_m_s', ...
+            guidance.velocity_reference_ned_m_s, 'm/s', 'experiment.definition.guidance');
+        add('experiment.reference.acceleration_ff_ned_m_s2', ...
+            guidance.acceleration_ff_ned_m_s2, 'm/s^2', 'experiment.definition.guidance');
+        add('experiment.reference.yaw_rad', guidance.yaw_rad, 'rad', 'experiment.definition.guidance');
+        add('experiment.reference.yaw_rate_rad_s', guidance.yaw_rate_rad_s, 'rad/s', 'experiment.definition.guidance');
+        add('experiment.reference.start_s', guidance.start_s, 's', 'experiment.definition.guidance');
+        add('experiment.reference.end_s', guidance.end_s, 's', 'experiment.definition.guidance');
     case 'BodyRateStep'
         add('experiment.reference.axis', guidance.axis, '1', 'experiment.definition.guidance');
         add('experiment.reference.amplitude', guidance.amplitude_rad_s, 'rad/s', 'experiment.definition.guidance');

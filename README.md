@@ -86,6 +86,7 @@ AeroGNC-Sim/
 │   ├── GNC/
 │   │   ├── Guidance/
 │   │   │   ├── hover_hold.m        位置保持参考
+│   │   │   ├── velocity_step.m     独立速度阶跃参考
 │   │   │   └── body_rate_step.m    角速度阶跃参考
 │   │   ├── Navigation/
 │   │   │   └── ideal_state.m       IdealState 测试适配器（非 EKF）
@@ -98,6 +99,7 @@ AeroGNC-Sim/
 │   │       └── Internal/           契约、默认参数、四元数/推力辅助
 │   └── Scenarios/
 │       ├── hover_scenario.m        悬停位置保持场景
+│       ├── velocity_step_scenario.m 独立速度参考场景
 │       ├── rate_step_scenario.m    角速度阶跃场景
 │       └── Internal/               配置构建、实验定义/身份、传感器、锁存
 ├── tools/wtr/                      WTR 导出、校验、JSON/SHA/几何辅助
@@ -133,7 +135,7 @@ AeroGNC-Sim/
 | Allocation | `src/GNC/Control/Allocation/pinv_allocator.m` | 六舵面 PINV 与电机独立推力 |
 | Topic 契约 | `src/GNC/Control/Internal/topic_specs.m` | 字段、维度、单位、超时 |
 | 控制默认参数 | `src/GNC/Control/Internal/control_defaults.m` | 四级控制器与分配默认值 |
-| Guidance | `src/GNC/Guidance/` | 位置/角速度参考生成 |
+| Guidance | `src/GNC/Guidance/` | 位置/速度/角速度参考生成 |
 | Navigation | `src/GNC/Navigation/ideal_state.m` | IdealState 估计适配器 |
 | 场景装配 | `src/Scenarios/` | 组件、Topic、初值、频率组装 |
 | 实验定义 | `src/Scenarios/Internal/experiment_definition.m` | 唯一有效参数、参考、active modules |
@@ -236,7 +238,35 @@ s = rate_step_scenario(struct( ...
 result = aero_sim(s.model, s.cfg);
 ```
 
-### 6.5 导出 WTR
+### 6.5 运行速度阶跃（Velocity Reference）
+
+```matlab
+source = struct('type', 'fixture', 'tables', shc09_aero_fixture());
+s = velocity_step_scenario(struct( ...
+    'aero_source', source, ...
+    'velocity_reference', [0.8; 0; 0], ...  % NED 北向，m/s
+    'start_s', 0.5, ...
+    'end_s', 2.5, ...
+    'tspan', [0, 5]));
+result = aero_sim(s.model, s.cfg);
+```
+
+实际控制链：
+
+```text
+Guidance velocity_step
+  → guidance/velocity_reference
+  → Velocity PID
+  → Attitude P
+  → Rate PID
+  → PINV Allocation
+  → SHC09
+```
+
+该场景不装配 Position P；速度参考由 Guidance 直接发布，Velocity PID 直接订阅。
+速度回到零不代表位置回到原点，不能用悬停位置保持指标评价。
+
+### 6.6 导出 WTR
 
 ```matlab
 out = wtr_export(result, s.model, struct('output_root', 'results'));
@@ -284,7 +314,7 @@ WindTrace
 - `simulation.mat` 是权威原始结果，`flight.wtr` 是派生的可视化交付；导出失败
   不删除原始 MAT，也不覆盖已有文件。
 
-### 6.6 运行测试
+### 6.8 运行测试
 
 ```matlab
 matlab -batch "run('tests/run_tests.m')"
@@ -319,7 +349,7 @@ results/<scenario>/<run_id>/
 | SHC09 机型 | 已实现：六自由度、涵道/机翼/舵面、执行器、悬停配平 |
 | 四级 GNC | 已实现：Position P、Velocity PID、Attitude P、Rate PID |
 | 控制分配 | 已实现：六舵面 PINV、配平、限幅、饱和/残差、电机独立推力 |
-| 闭环场景 | 已实现：HoverHold、BodyRate Step |
+| 闭环场景 | 已实现：HoverHold、Velocity Step、BodyRate Step |
 | 导航 | 已实现：IdealState 测试适配器 |
 | WTR | 已实现：v1 导出、契约校验、锁存时间轴、参数追溯 |
 | 真实气动 | 未完成：数据许可/物理有效性未闭合；fixture 不是物理验证 |
@@ -327,6 +357,15 @@ results/<scenario>/<run_id>/
 | INDI / MPC / DCA / CA16 / WLS | 未实现 |
 | EKF2/ECL、传感器噪声模型 | 未实现 |
 | 归一化虚拟控制接口 | 未实施；当前保持 SI 接口 |
+
+### 8.1 Reference 场景状态
+
+| Reference | 状态 |
+|---|---|
+| Position | 已实现（HoverHold） |
+| Velocity | 本轮新增（Velocity Step） |
+| Attitude | 待实现 |
+| BodyRate | 已实现（BodyRate Step） |
 
 物理验证状态：**BLOCKED**。合成气动 fixture 只能证明软件链路、数值稳定性和
 接口正确性，不能表述为真实气动、实机或型号认证结果。
