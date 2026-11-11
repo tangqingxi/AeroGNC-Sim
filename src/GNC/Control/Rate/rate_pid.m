@@ -6,11 +6,12 @@ function bus = rate_pid(t, bus, params)
 %   e = ω_ref − ω
 %
 % 输入：
-%   control/rate_setpoint        omega、alpha（前馈，仅记录）
+%   control/rate_setpoint        omega、alpha（前馈，仅记录）、thrust_n（N）
 %   navigation/state             omega、alpha（IdealState 差分估计）
 %   control/allocation_status    saturated（+1/-1，Topic 反馈）
 % 输出：
 %   control/torque_setpoint      torque（N·m，FRD）
+%   control/thrust_setpoint      原样总推力 thrust_n（N，FRD -Z）
 %
 % 积分状态归本控制器所有；积分限幅，并按分配器上一拍的饱和方向冻结。
 % 抗饱和只通过 Topic 读取，不访问分配器内部状态或其它控制器状态。
@@ -35,6 +36,13 @@ state = bus.control_state.rate;
 [ref, refStatus] = bus.topics.tryRead(params.rate_topic, t);
 if ~strcmp(navStatus, 'ok') || ~strcmp(refStatus, 'ok')
     return;
+end
+
+% Topic 契约约束尺寸与有限性；这里补充总推力的非负物理语义，禁止缺省回退。
+if ~isfield(ref.data, 'thrust_n') || ~isnumeric(ref.data.thrust_n) ...
+        || ~isreal(ref.data.thrust_n) || ~isscalar(ref.data.thrust_n) ...
+        || ~isfinite(ref.data.thrust_n) || ref.data.thrust_n < 0
+    error('gnc:rate:thrust', 'Rate 参考必须包含合法的非负总推力 thrust_n（N）');
 end
 
 if state.initialized
@@ -72,6 +80,9 @@ state.integral = min(max(state.integral, -params.rate.integral_limit), ...
     params.rate.integral_limit);
 
 bus.topics.publish(params.output_topic, struct('torque', torque), t, t, t, 'rate_pid');
+% 与力矩同次更新、同一采样时刻发布；只传递，不控制或归一化推力。
+bus.topics.publish(params.thrust_topic, struct('thrust_n', ref.data.thrust_n), ...
+    t, t, t, 'rate_pid');
 
 state.time = t;
 state.initialized = true;

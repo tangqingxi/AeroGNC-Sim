@@ -3,7 +3,7 @@ function bus = pinv_allocator(t, bus, params)
 %
 % 输入 Topic：
 %   control/torque_setpoint      期望力矩 τ_d（N·m，FRD，**相对配平的增量**）
-%   control/attitude_setpoint    总推力 T（N，可选）
+%   control/thrust_setpoint      总推力 T（N，FRD -Z，必需）
 % 输出：
 %   control/allocation_status    δ、achieved、residual、saturated、motor、Ve_nom
 %   bus.command                  servos（6×1 rad）+ motor（rad/s）
@@ -30,10 +30,15 @@ if ~strcmp(torqueStatus, 'ok')
 end
 torqueDesired = torqueMsg.data.torque(:);
 
-thrust = params.hover_thrust_n;
-[attitudeMsg, attitudeStatus] = bus.topics.tryRead(params.attitude_topic, t);
-if strcmp(attitudeStatus, 'ok')
-    thrust = attitudeMsg.data.thrust_n;
+% 分配器只认识力矩和推力两个控制输出；缺失或过期时保持已有命令，不生成新结果。
+[thrustMsg, thrustStatus] = bus.topics.tryRead(params.thrust_topic, t);
+if ~strcmp(thrustStatus, 'ok')
+    return;
+end
+thrust = thrustMsg.data.thrust_n;
+if ~isnumeric(thrust) || ~isreal(thrust) || ~isscalar(thrust) ...
+        || ~isfinite(thrust) || thrust < 0
+    error('gnc:allocation:thrust', '分配推力必须为非负有限标量（N）');
 end
 thrust = min(max(thrust, 0), params.max_thrust_n);
 

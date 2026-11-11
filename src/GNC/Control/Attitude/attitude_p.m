@@ -10,7 +10,7 @@ function bus = attitude_p(t, bus, params)
 %   navigation/state           quaternion、omega
 %   control/attitude_setpoint  quaternion、thrust_n、yaw、yaw_rate
 % 输出：
-%   control/rate_setpoint      omega（rad/s）、alpha=0（rad/s²）
+%   control/rate_setpoint      omega（rad/s）、alpha=0（rad/s²）、原样 thrust_n（N）
 %
 % 参考模型：PX4 默认启用二阶临界阻尼参考模型（MC_REF_W_N=50 rad/s，
 % MC_REF_FF=0），本模块实现其 ZOH 精确离散形式。yaw_rate 是制导给出的
@@ -108,7 +108,9 @@ end
 
 omega = min(max(omega, -params.attitude.rate_limit), params.attitude.rate_limit);
 
-payload = struct('omega', omega, 'alpha', zeros(3, 1));
+% 推力仅沿控制链传递，不参与姿态控制律，也不在此重新计算或限幅。
+payload = struct('omega', omega, 'alpha', zeros(3, 1), ...
+    'thrust_n', setpoint.data.thrust_n);
 bus.topics.publish(params.output_topic, payload, t, t, t, 'attitude_p');
 
 state.time = t;

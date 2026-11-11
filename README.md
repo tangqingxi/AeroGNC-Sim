@@ -409,3 +409,30 @@ results/<scenario>/<run_id>/
 - [`AGENTS.md`](AGENTS.md)：开发、提交与交接约束。
 - [AUDIT 仓库](https://github.com/tangqingxi/AeroGNC-Sim-Audit)：阶段验证证据、
   审计报告与交接记录。
+
+
+### 统一总推力传递（GNC-Thrust-Setpoint-Unification）
+
+| Reference | 推力来源 | 传递路径 |
+|---|---|---|
+| Position | Velocity PID 计算 | Attitude → Rate → Allocation |
+| Velocity | Velocity PID 计算 | Attitude → Rate → Allocation |
+| Attitude | Guidance 固定参考 | Attitude → Rate → Allocation |
+| BodyRate | Guidance 固定参考 | Rate → Allocation |
+
+Attitude P 将输入推力原样写入 `control/rate_setpoint.thrust_n`；BodyRate Guidance
+通过 `guidance/rate_reference.thrust_n` 提供同一语义。Rate PID 同次更新发布
+`control/torque_setpoint` 和 `control/thrust_setpoint`，采样时刻一致。
+推力传递不是推力控制：Attitude P 与 Rate PID 不计算、归一化或限幅推力。
+
+Allocation 只接收上述 torque/thrust 两个控制输出，不读取 Guidance、Attitude 或
+Velocity Topic；任一输入缺失或过期时保持已有命令，不生成新分配结果。
+六舵面 SI PINV、电机独立标量求解和物理限幅均保持。推力为 N 标量，沿 FRD 机体 -Z。
+
+BodyRate `rate_step_scenario` 的 `thrust_reference_n` 属于场景参考，默认
+`model.trim.thrust_n`，装配时按实际电机推力范围验证，并保存到 Experiment Definition。
+Attitude 场景的同名固定推力选项保持原意。固定推力不意味着位置/速度闭环。
+
+WTR v1 增加通用 Topic `vehicle_thrust_setpoint.thrust_n`（N，FRD -Z），
+直接使用 Rate 的真实发布时刻，不插值。`vehicle_rates_setpoint` 保持角速度语义。
+四种 Reference 共同使用这一下游接口；Physical Validation 继续 **BLOCKED**。

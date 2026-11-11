@@ -26,6 +26,11 @@ if isempty(rateLog)
     rateLog = require_topic(log, 'guidance/rate_reference');
 end
 [rateTime, rateOmega, rateAlpha] = unpack_rates(rateLog);
+rateSource = rateLog{1}.name;
+% 总推力使用 Rate 的真实发布时刻，不从姿态参考回填，也不跨 Topic 插值。
+thrustLog = require_topic(log, 'control/thrust_setpoint');
+thrustTime = cellfun(@(r) r.sample_time_s, thrustLog(:));
+thrustN = cellfun(@(r) r.data.thrust_n, thrustLog(:));
 
 refLog = optional_topic(log, 'guidance/reference');
 velRefLog = optional_topic(log, 'guidance/velocity_reference');
@@ -140,7 +145,11 @@ specs = struct();
 
 [topics, specs] = add_topic(topics, specs, 'vehicle_rates_setpoint', rateTime, ...
     struct('xyz', rateOmega), 'controller_setpoint', 'FRD', struct( ...
-        'xyz', unit('rad/s', 'control/rate_setpoint')));
+        'xyz', unit('rad/s', rateSource)));
+
+[topics, specs] = add_topic(topics, specs, 'vehicle_thrust_setpoint', thrustTime, ...
+    struct('thrust_n', thrustN), 'controller_setpoint', 'FRD', struct( ...
+        'thrust_n', unit('N', 'control/thrust_setpoint (total thrust along body -Z)')));
 
 [topics, specs] = add_topic(topics, specs, 'vehicle_rates_reference', rateRefTime, ...
     struct('xyz', rateRefOmega), 'reference', 'FRD', struct( ...
@@ -156,7 +165,7 @@ specs = struct();
 
 [topics, specs] = add_topic(topics, specs, 'vehicle_angular_acceleration_reference', rateTime, ...
     struct('xyz', rateAlpha), 'reference', 'FRD', struct( ...
-        'xyz', unit('rad/s^2', 'control/rate_setpoint alpha feedforward')));
+        'xyz', unit('rad/s^2', [rateSource ' alpha feedforward'])));
 
 [topics, specs] = add_topic(topics, specs, 'shc09_vanes', truthTime, ...
     struct('actual', truthDelta, 'estimated', heldServos), ...

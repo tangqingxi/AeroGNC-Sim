@@ -214,7 +214,7 @@ B_acc = J_frd⁻¹ · B_tau
   真值隔离），V1.0 始终启用；结果快照、有界发布日志与边界校验已补齐。
 - GNC-Baseline：Position P、Velocity PID、Attitude P、Rate PID 四级独立控制器 + 独立 PINV
   分配；四个闭环场景（HoverHold、Velocity Step、Attitude Step、BodyRate Step）
-与 WTR 导出。全项目共 51 项测试（详见 §15）。
+与 WTR 导出。全项目共 55 项测试（详见 §15）。
 
 **未实现 / 依赖外部条件**
 
@@ -458,12 +458,13 @@ src/Scenarios/            hover_scenario、rate_step_scenario（仅装配）
 | `navigation/state` | IdealState | 四级控制器 | p、v、a、q、ω、α、`ideal=1` |
 | `guidance/reference` | HoverHold | Position | p、v、a、yaw、yaw_rate |
 | `guidance/velocity_reference` | Velocity Step | Velocity | `velocity`、`acceleration_ff`、yaw、yaw_rate |
-| `guidance/attitude_reference` | Attitude Step | Attitude、Allocation | q、`thrust_n`、yaw、yaw_rate |
-| `guidance/rate_reference` | BodyRate | Rate | ω、α |
+| `guidance/attitude_reference` | Attitude Step | Attitude | q、`thrust_n`、yaw、yaw_rate |
+| `guidance/rate_reference` | BodyRate | Rate | ω、α、`thrust_n` |
 | `control/velocity_setpoint` | Position | Velocity | `velocity`、`acceleration_ff`、`yaw`、`yaw_rate` |
-| `control/attitude_setpoint` | Velocity | Attitude、Allocation | q、`thrust_n`、`yaw`、`yaw_rate` |
-| `control/rate_setpoint` | Attitude | Rate | ω、α |
+| `control/attitude_setpoint` | Velocity | Attitude | q、`thrust_n`、`yaw`、`yaw_rate` |
+| `control/rate_setpoint` | Attitude | Rate | ω、α、`thrust_n` |
 | `control/torque_setpoint` | Rate | Allocation | `torque` |
+| `control/thrust_setpoint` | Rate | Allocation | `thrust_n`（N，沿 FRD -Z） |
 | `control/allocation_status` | Allocation | Rate、诊断 | δ、achieved、residual、saturated、motor、Ve_nom |
 
 总线与契约由 `src/GNC/Control/Internal/topic_specs.m` 唯一定义；不得建立包含
@@ -483,8 +484,8 @@ Guidance 的参考类型决定启用链：
 当前 V1.0 实现 Position（HoverHold）、Velocity（Velocity Step）、Attitude
 （Attitude Step）与 BodyRate（阶跃）四种 Guidance。Velocity 场景不装配 Position，
 Velocity PID 直接订阅 `guidance/velocity_reference`；Attitude 场景不装配
-Position/Velocity，Attitude P 直接订阅 `guidance/attitude_reference`，Allocation
-从同一 Topic 读取固定 `thrust_n`；下游组件复用。
+Position/Velocity，Attitude P 直接订阅 `guidance/attitude_reference`，将固定 `thrust_n` 原样交给 Rate；
+Allocation 只读取独立的 `control/torque_setpoint` 与 `control/thrust_setpoint`。
 
 Attitude-only 场景使用固定总推力（默认 `trim.thrust_n`），没有位置或速度闭环；
 姿态倾斜产生的平动加速度和位置漂移是预期物理行为，不能描述为完整悬停控制。
@@ -562,3 +563,30 @@ cfg.experiment
 2. 气动为合成 fixture，物理闭环验收 **BLOCKED**；不得表述为真实气动或实机验证。
 3. Navigation 为 IdealState，无传感器噪声/偏置；加速度由测量差分得到。
 4. 未实现 INDI/MPC/CA16/可选姿态误差模式/增益调度；WTR 固定 v1 协议。
+
+
+### 统一总推力传递（GNC-Thrust-Setpoint-Unification）
+
+| Reference | 推力来源 | 传递路径 |
+|---|---|---|
+| Position | Velocity PID 计算 | Attitude → Rate → Allocation |
+| Velocity | Velocity PID 计算 | Attitude → Rate → Allocation |
+| Attitude | Guidance 固定参考 | Attitude → Rate → Allocation |
+| BodyRate | Guidance 固定参考 | Rate → Allocation |
+
+Attitude P 将输入推力原样写入 `control/rate_setpoint.thrust_n`；BodyRate Guidance
+通过 `guidance/rate_reference.thrust_n` 提供同一语义。Rate PID 同次更新发布
+`control/torque_setpoint` 和 `control/thrust_setpoint`，采样时刻一致。
+推力传递不是推力控制：Attitude P 与 Rate PID 不计算、归一化或限幅推力。
+
+Allocation 只接收上述 torque/thrust 两个控制输出，不读取 Guidance、Attitude 或
+Velocity Topic；任一输入缺失或过期时保持已有命令，不生成新分配结果。
+六舵面 SI PINV、电机独立标量求解和物理限幅均保持。推力为 N 标量，沿 FRD 机体 -Z。
+
+BodyRate `rate_step_scenario` 的 `thrust_reference_n` 属于场景参考，默认
+`model.trim.thrust_n`，装配时按实际电机推力范围验证，并保存到 Experiment Definition。
+Attitude 场景的同名固定推力选项保持原意。固定推力不意味着位置/速度闭环。
+
+WTR v1 增加通用 Topic `vehicle_thrust_setpoint.thrust_n`（N，FRD -Z），
+直接使用 Rate 的真实发布时刻，不插值。`vehicle_rates_setpoint` 保持角速度语义。
+四种 Reference 共同使用这一下游接口；Physical Validation 继续 **BLOCKED**。

@@ -184,6 +184,7 @@ switch guidance.type
         add('experiment.reference.start_s', guidance.start_s, 's', 'experiment.definition.guidance');
         add('experiment.reference.end_s', guidance.end_s, 's', 'experiment.definition.guidance');
     case 'BodyRateStep'
+        add('experiment.reference.thrust_reference_n', guidance.thrust_reference_n, 'N', 'experiment.definition.guidance');
         add('experiment.reference.axis', guidance.axis, '1', 'experiment.definition.guidance');
         add('experiment.reference.amplitude', guidance.amplitude_rad_s, 'rad/s', 'experiment.definition.guidance');
         add('experiment.reference.start_s', guidance.start_s, 's', 'experiment.definition.guidance');
